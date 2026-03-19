@@ -137,9 +137,10 @@ function ManualInstructions({ browser, os, onClose }) {
 }
 
 // ── Main banner ──────────────────────────────────────────────────────────────
-export default function InstallBanner() {
-  const [deferredPrompt, setDeferredPrompt] = useState(null)
-  const [show, setShow]                     = useState(false)
+// Rendered on demand when user clicks "Install App" — pass onClose to dismiss
+export default function InstallBanner({ onClose }) {
+  const [deferredPrompt, setDeferredPrompt] = useState(() => window.__viiInstallPrompt || null)
+  const [show, setShow]                     = useState(true)
   const [showManual, setShowManual]         = useState(false)
   const [installing, setInstalling]         = useState(false)
   const [installed, setInstalled]           = useState(false)
@@ -147,49 +148,37 @@ export default function InstallBanner() {
   const browser = getBrowser()
 
   useEffect(() => {
-    // Don't show if: already installed as PWA, dismissed before, or just installed
-    if (isRunningAsPWA()) return
-    try {
-      if (localStorage.getItem(DISMISSED_KEY)) return
-      if (localStorage.getItem(INSTALL_DATE_KEY)) return
-    } catch {}
+    // Pick up global prompt if already captured
+    if (window.__viiInstallPrompt) setDeferredPrompt(window.__viiInstallPrompt)
 
-    // Chrome/Edge/Samsung — native prompt available
     const handler = (e) => {
       e.preventDefault()
+      window.__viiInstallPrompt = e
       setDeferredPrompt(e)
-      // Small delay so it doesn't fire immediately on page load
-      setTimeout(() => setShow(true), 3000)
     }
     window.addEventListener('beforeinstallprompt', handler)
 
-    // iOS Safari or Firefox/Opera (no beforeinstallprompt) — show manual instructions
-    const supportsNative = 'BeforeInstallPromptEvent' in window ||
-      CSS.supports('display', 'flex') // broad support check
-    if (os === 'ios' || browser === 'firefox' || browser === 'opera' || browser === 'samsung') {
-      setTimeout(() => setShow(true), 3000)
-    }
-
-    // Track when app is successfully installed via native prompt
     window.addEventListener('appinstalled', () => {
       try { localStorage.setItem(INSTALL_DATE_KEY, Date.now()) } catch {}
+      window.__viiInstallPrompt = null
       setShow(false)
       setInstalled(true)
-      setTimeout(() => setInstalled(false), 4000)
+      setTimeout(() => { setInstalled(false); onClose?.() }, 4000)
     })
 
     return () => window.removeEventListener('beforeinstallprompt', handler)
   }, [])
 
   const handleInstall = async () => {
-    if (deferredPrompt) {
-      // Native one-tap install
+    const prompt = deferredPrompt || window.__viiInstallPrompt
+    if (prompt) {
       setInstalling(true)
       try {
-        deferredPrompt.prompt()
-        const { outcome } = await deferredPrompt.userChoice
+        await prompt.prompt()
+        const { outcome } = await prompt.userChoice
         if (outcome === 'accepted') {
           try { localStorage.setItem(INSTALL_DATE_KEY, Date.now()) } catch {}
+          window.__viiInstallPrompt = null
           setShow(false)
         }
       } finally {
@@ -197,7 +186,6 @@ export default function InstallBanner() {
         setDeferredPrompt(null)
       }
     } else {
-      // Manual instructions for unsupported browsers
       setShowManual(true)
     }
   }
@@ -205,6 +193,7 @@ export default function InstallBanner() {
   const handleDismiss = () => {
     try { localStorage.setItem(DISMISSED_KEY, '1') } catch {}
     setShow(false)
+    onClose?.()
   }
 
   if (!show && !installed) return null
