@@ -11,9 +11,9 @@ import './index.css'
 // We store it on window so Layout can always pick it up.
 window.__viiInstallPrompt = null
 window.addEventListener('beforeinstallprompt', (e) => {
-  e.preventDefault()
+  e.preventDefault()          // MUST be called to suppress Chrome's mini bar
   window.__viiInstallPrompt = e
-}, { once: false })
+})
 
 // ── Error Boundary ────────────────────────────────────────────
 // Catches render errors anywhere in the tree so one broken component
