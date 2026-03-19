@@ -12,6 +12,7 @@ import Avatar from '@/components/ui/Avatar'
 import ViiMbuniLogo from '@/components/ui/ViiMbuniLogo'
 import NotifPanel from '@/components/ui/NotifPanel'
 import CreatePostModal from '@/components/feed/CreatePostModal'
+import InstallBanner from '@/components/ui/InstallBanner'
 import { usePushNotifications } from '@/hooks/usePushNotifications'
 import { useWebRTCCall } from '@/hooks/useWebRTCCall'
 import { CallContext } from '@/lib/CallContext'
@@ -53,6 +54,7 @@ export default function Layout() {
   const [createOpen, setCreateOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [keyboardOpen, setKeyboardOpen] = useState(false)
+  const [showInstallBanner, setShowInstallBanner] = useState(false)
 
   // ── PWA Install prompt ────────────────────────────────────────────────────
   const [installPrompt, setInstallPrompt] = useState(null)
@@ -66,24 +68,29 @@ export default function Layout() {
     }
     const handler = (e) => { e.preventDefault(); setInstallPrompt(e) }
     window.addEventListener('beforeinstallprompt', handler)
-    window.addEventListener('appinstalled', () => { setIsInstalled(true); setInstallPrompt(null) })
+    window.addEventListener('appinstalled', () => {
+      setIsInstalled(true)
+      setInstallPrompt(null)
+      // Immediately relaunch into the installed app (standalone mode)
+      try { localStorage.setItem('vii-install-date', Date.now()) } catch (_) {}
+      const url = new URL(window.location.href)
+      url.searchParams.set('source', 'pwa')
+      window.location.replace(url.toString())
+    })
     return () => window.removeEventListener('beforeinstallprompt', handler)
   }, [])
 
   const handleInstall = async () => {
     const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent)
-    const isFirefox = /firefox/i.test(navigator.userAgent)
     if (installPrompt) {
+      // Native one-tap install — browser handles everything
       await installPrompt.prompt()
       const { outcome } = await installPrompt.userChoice
       if (outcome === 'accepted') { setInstallPrompt(null); setIsInstalled(true) }
     } else if (isIOS) {
       setShowIOSHint(true)
-    } else if (isFirefox) {
-      alert('To install: Click the 3-dot menu → "Install" or "Add to Home Screen"')
-    } else {
-      alert('To install: Open your browser menu and tap "Add to Home Screen" or "Install App"')
     }
+    // All other browsers: do nothing — button stays visible but silent
   }
 
   // ── Draggable floating theme toggle ──────────────────────────────────────
@@ -287,18 +294,29 @@ export default function Layout() {
   return (
     <div className="flex min-h-screen bg-surface-50 dark:bg-surface-950">
 
-      {/* ── iOS install hint modal ───────────────────────────────────── */}
+      {/* ── iOS install hint — minimal visual only ───────────────────── */}
       {showIOSHint && (
         <div className="fixed inset-0 z-[100] bg-black/60 flex items-end justify-center p-4" onClick={() => setShowIOSHint(false)}>
           <div className="bg-white dark:bg-surface-900 rounded-2xl p-5 w-full max-w-sm shadow-2xl" onClick={e => e.stopPropagation()}>
-            <h3 className="font-bold text-lg mb-2 text-gray-900 dark:text-white">Install Vii-Mbuni</h3>
-            <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">To install on iOS:</p>
-            <ol className="text-sm text-gray-700 dark:text-gray-200 space-y-2 list-decimal list-inside">
-              <li>Tap the <strong>Share</strong> button <span className="text-lg">⬆️</span> at the bottom of Safari</li>
-              <li>Scroll down and tap <strong>"Add to Home Screen"</strong></li>
-              <li>Tap <strong>"Add"</strong> in the top right</li>
-            </ol>
-            <button onClick={() => setShowIOSHint(false)} className="btn-primary w-full mt-4">Got it!</button>
+            <div className="flex items-center gap-3 mb-4">
+              <img src="/icons/icon-96.png" alt="Vii-Mbuni" className="w-12 h-12 rounded-xl" />
+              <div>
+                <div className="font-bold text-gray-900 dark:text-white">Install Vii-Mbuni</div>
+                <div className="text-xs text-gray-400">Add to your home screen</div>
+              </div>
+            </div>
+            <div className="flex items-center justify-center gap-4 py-3 bg-surface-50 dark:bg-white/5 rounded-xl">
+              <div className="flex flex-col items-center gap-1 text-gray-500 dark:text-gray-300">
+                <span className="text-3xl">⬆️</span>
+                <span className="text-[11px]">Share</span>
+              </div>
+              <span className="text-gray-300 dark:text-white/20 text-xl">→</span>
+              <div className="flex flex-col items-center gap-1 text-gray-500 dark:text-gray-300">
+                <span className="text-3xl">➕</span>
+                <span className="text-[11px]">Add to Home</span>
+              </div>
+            </div>
+            <button onClick={() => setShowIOSHint(false)} className="btn-primary w-full mt-4">OK</button>
           </div>
         </div>
       )}
@@ -529,6 +547,10 @@ export default function Layout() {
       </div>
 
       {createOpen && <CreatePostModal onClose={() => setCreateOpen(false)} />}
+
+      {showInstallBanner && (
+        <InstallBanner onClose={() => setShowInstallBanner(false)} />
+      )}
 
       <CallScreen
         callState={call.callState}
