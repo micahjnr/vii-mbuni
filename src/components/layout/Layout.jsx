@@ -3,7 +3,8 @@ import { useState, useEffect, useRef } from 'react'
 import {
   Home, Compass, Play, Users, MessageCircle, Globe,
   Calendar, BarChart2, User, Bell, BellOff, Moon, Sun, LogOut,
-  Menu, X, Search, Trophy, Bookmark, Sparkles, ChevronRight, Settings
+  Menu, X, Search, Trophy, Bookmark, Sparkles, ChevronRight, Settings,
+  Download
 } from 'lucide-react'
 import { useAuthStore, useUIStore, useNotifStore } from '@/store'
 import sb from '@/lib/supabase'
@@ -42,7 +43,6 @@ const BOTTOM_NAV = [
   { to: '/zaar-culture', icon: null, label: 'Zaar', zaar: true },
   { to: '/profile',  icon: User,          label: 'Profile'            },
 ]
-// Theme toggle appears as a floating pill above the bottom nav
 
 export default function Layout() {
   const { profile, user, signOut } = useAuthStore()
@@ -54,6 +54,59 @@ export default function Layout() {
   const [createOpen, setCreateOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [keyboardOpen, setKeyboardOpen] = useState(false)
+
+  // ── PWA Install prompt ────────────────────────────────────────────────────
+  const [installPrompt, setInstallPrompt] = useState(null)
+  const [isInstalled, setIsInstalled] = useState(false)
+  const [showIOSHint, setShowIOSHint] = useState(false)
+
+  useEffect(() => {
+    // Check if already installed
+    if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) {
+      setIsInstalled(true)
+      return
+    }
+
+    // Capture the beforeinstallprompt event (Chrome, Edge, Samsung Internet)
+    const handler = (e) => {
+      e.preventDefault()
+      setInstallPrompt(e)
+    }
+    window.addEventListener('beforeinstallprompt', handler)
+
+    // Listen for successful install
+    window.addEventListener('appinstalled', () => {
+      setIsInstalled(true)
+      setInstallPrompt(null)
+    })
+
+    return () => window.removeEventListener('beforeinstallprompt', handler)
+  }, [])
+
+  const handleInstall = async () => {
+    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent)
+    const isFirefox = /firefox/i.test(navigator.userAgent)
+
+    if (installPrompt) {
+      // Chrome / Edge / Samsung Internet — show native prompt
+      await installPrompt.prompt()
+      const { outcome } = await installPrompt.userChoice
+      if (outcome === 'accepted') {
+        setInstallPrompt(null)
+        setIsInstalled(true)
+      }
+    } else if (isIOS) {
+      // iOS Safari — show manual hint
+      setShowIOSHint(true)
+    } else if (isFirefox) {
+      // Firefox — open install guide
+      alert('To install: Click the 3-dot menu → "Install" or "Add to Home Screen"')
+    } else {
+      // Other browsers
+      alert('To install: Open your browser menu and tap "Add to Home Screen" or "Install App"')
+    }
+  }
+
   const navigate = useNavigate()
   const location = useLocation()
   const notifRef = useRef(null)
@@ -65,7 +118,6 @@ export default function Layout() {
   const call = useWebRTCCall({
     user,
     onIncomingCall: ({ caller }) => {
-      // Play incoming ring tone
       try {
         const AudioCtx = window.AudioContext || window.webkitAudioContext
         if (!AudioCtx) return
@@ -97,7 +149,6 @@ export default function Layout() {
     },
   })
 
-  // Stop ring when call state changes away from incoming
   useEffect(() => {
     if (call.callState !== 'incoming') {
       incomingRingStopRef.current?.()
@@ -105,11 +156,9 @@ export default function Layout() {
     }
   }, [call.callState])
 
-  // Listen for messages from the service worker (call notification tapped)
   useEffect(() => {
     const handler = (e) => {
       if (e.data?.type === 'INCOMING_CALL' && call.callState === 'idle') {
-        // SW told us about an incoming call — fetch the session and show call screen
         const { sessionId } = e.data
         if (!sessionId || !user?.id) return
         import('@/lib/supabase').then(({ default: sb }) => {
@@ -138,7 +187,6 @@ export default function Layout() {
     return () => navigator.serviceWorker?.removeEventListener('message', handler)
   }, [call, user?.id])
 
-  // Hide bottom nav when soft keyboard is open
   useEffect(() => {
     const vv = window.visualViewport
     if (!vv) return
@@ -148,15 +196,12 @@ export default function Layout() {
     return () => vv.removeEventListener('resize', onResize)
   }, [])
 
-  // Clear message badge on messages page
   useEffect(() => {
     if (location.pathname.startsWith('/messages')) clearMsgCount()
   }, [location.pathname, clearMsgCount])
 
-  // Close drawer on route change
   useEffect(() => { setDrawerOpen(false) }, [location.pathname])
 
-  // Close notif panel on outside click
   useEffect(() => {
     if (!notifOpen) return
     const handler = (e) => {
@@ -176,7 +221,6 @@ export default function Layout() {
     if (search.trim()) navigate(`/explore?q=${encodeURIComponent(search.trim())}`)
   }
 
-  // Shared nav link renderer
   const renderNavLink = ({ to, icon: Icon, label, badge, ai, end, settings: isSettings }) => (
     <NavLink
       key={to}
@@ -205,10 +249,45 @@ export default function Layout() {
     </NavLink>
   )
 
+  // Install button component reused in sidebar + drawer
+  const InstallButton = ({ className = '' }) => {
+    if (isInstalled) return null
+    return (
+      <button
+        onClick={handleInstall}
+        className={clsx(
+          'flex items-center gap-2 w-full px-3 py-2.5 rounded-xl text-sm font-semibold transition-all',
+          'bg-brand-50 dark:bg-brand-500/10 text-brand-600 dark:text-brand-400',
+          'hover:bg-brand-100 dark:hover:bg-brand-500/20 border border-brand-200 dark:border-brand-500/20',
+          className
+        )}
+      >
+        <Download size={16} />
+        <span>Install App</span>
+      </button>
+    )
+  }
+
   return (
     <div className="flex min-h-screen bg-surface-50 dark:bg-surface-950">
 
-      {/* ── Desktop sidebar (always visible ≥ lg) ──────────────────── */}
+      {/* ── iOS install hint modal ───────────────────────────────────── */}
+      {showIOSHint && (
+        <div className="fixed inset-0 z-[100] bg-black/60 flex items-end justify-center p-4" onClick={() => setShowIOSHint(false)}>
+          <div className="bg-white dark:bg-surface-900 rounded-2xl p-5 w-full max-w-sm shadow-2xl" onClick={e => e.stopPropagation()}>
+            <h3 className="font-bold text-lg mb-2 text-gray-900 dark:text-white">Install Vii-Mbuni</h3>
+            <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">To install on iOS:</p>
+            <ol className="text-sm text-gray-700 dark:text-gray-200 space-y-2 list-decimal list-inside">
+              <li>Tap the <strong>Share</strong> button <span className="text-lg">⬆️</span> at the bottom of Safari</li>
+              <li>Scroll down and tap <strong>"Add to Home Screen"</strong></li>
+              <li>Tap <strong>"Add"</strong> in the top right</li>
+            </ol>
+            <button onClick={() => setShowIOSHint(false)} className="btn-primary w-full mt-4">Got it!</button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Desktop sidebar ─────────────────────────────────────────── */}
       <aside className="hidden lg:flex flex-col w-64 h-screen sticky top-0 p-4 border-r border-surface-200 dark:border-white/5 bg-white dark:bg-surface-900 overflow-y-auto scrollbar-hide flex-shrink-0">
         <div className="flex items-center gap-2.5 px-2 mb-6">
           <ViiMbuniLogo size="sm" />
@@ -233,6 +312,11 @@ export default function Layout() {
         <button onClick={() => setCreateOpen(true)} className="btn-primary w-full mt-4 py-2.5">
           <span className="text-lg leading-none">+</span> Create Post
         </button>
+
+        {/* Install button — desktop sidebar */}
+        <div className="mt-2">
+          <InstallButton />
+        </div>
 
         <div className="mt-4 pt-4 border-t border-surface-200 dark:border-white/5 flex items-center gap-3">
           <Avatar src={profile?.avatar_url} name={profile?.full_name} size={36} onClick={() => navigate('/profile')} className="cursor-pointer" />
@@ -259,7 +343,6 @@ export default function Layout() {
       </aside>
 
       {/* ── Mobile drawer overlay ───────────────────────────────────── */}
-      {/* Backdrop — clicking it closes the drawer */}
       <div
         className={clsx(
           'lg:hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm transition-opacity duration-300',
@@ -268,14 +351,12 @@ export default function Layout() {
         onClick={() => setDrawerOpen(false)}
       />
 
-      {/* Drawer panel — slides in from left, DOES NOT cover main content area */}
       <div
         className={clsx(
           'lg:hidden fixed left-0 top-0 bottom-0 z-50 w-72 bg-white dark:bg-surface-900 shadow-2xl flex flex-col transition-transform duration-300 ease-out',
           drawerOpen ? 'translate-x-0' : '-translate-x-full'
         )}
       >
-        {/* Drawer header */}
         <div className="flex items-center justify-between px-4 py-4 border-b border-surface-200 dark:border-white/10">
           <ViiMbuniLogo size="sm" />
           <button onClick={() => setDrawerOpen(false)} className="btn-icon text-gray-500">
@@ -283,7 +364,6 @@ export default function Layout() {
           </button>
         </div>
 
-        {/* User info strip */}
         <div className="flex items-center gap-3 px-4 py-3 border-b border-surface-200 dark:border-white/10">
           <Avatar src={profile?.avatar_url} name={profile?.full_name} size={42}
             onClick={() => { navigate('/profile'); setDrawerOpen(false) }} className="cursor-pointer" />
@@ -293,16 +373,18 @@ export default function Layout() {
           </div>
         </div>
 
-        {/* Nav links — scrollable */}
         <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-0.5">
           {NAV.map(renderNavLink)}
         </nav>
 
-        {/* Drawer footer */}
         <div className="px-4 py-3 border-t border-surface-200 dark:border-white/10 space-y-2">
           <button onClick={() => { setCreateOpen(true); setDrawerOpen(false) }} className="btn-primary w-full py-2.5">
             + Create Post
           </button>
+
+          {/* Install button — mobile drawer */}
+          <InstallButton />
+
           <div className="flex items-center justify-between pt-1">
             <div className="flex items-center gap-2">
               {pushSupported && (
@@ -342,7 +424,6 @@ export default function Layout() {
             <ViiMbuniLogo size="sm" />
           </div>
 
-          {/* Search bar — grows on mobile topbar */}
           <form onSubmit={handleSearch} className="hidden sm:flex flex-1 max-w-xs mx-2">
             <div className="relative w-full">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -356,7 +437,6 @@ export default function Layout() {
           </form>
 
           <div className="flex items-center gap-1.5 flex-shrink-0">
-            {/* Bell — tap = notifications panel, long-press = toggle push notifications */}
             <div className="relative" ref={notifRef}>
               <button
                 onClick={() => setNotifOpen(v => !v)}
@@ -384,9 +464,6 @@ export default function Layout() {
               )}
             </div>
 
-
-
-            {/* Avatar */}
             <button
               onClick={() => navigate('/profile')}
               className="w-9 h-9 rounded-xl overflow-hidden ring-2 ring-brand-400 dark:ring-brand-500 flex-shrink-0"
@@ -417,14 +494,13 @@ export default function Layout() {
             onClick={() => navigate('/profile')} className="cursor-pointer" />
         </header>
 
-        {/* Page content — full height, no content hidden behind nav */}
         <main className="flex-1 p-4 lg:p-6 max-w-3xl mx-auto w-full pb-20 lg:pb-6 overflow-x-hidden">
           <CallContext.Provider value={call}>
             <Outlet />
           </CallContext.Provider>
         </main>
 
-        {/* ── Floating theme toggle — mobile only ─────────────────── */}
+        {/* Floating theme toggle — mobile only */}
         <div className="lg:hidden fixed bottom-20 right-4 z-40">
           <button
             onClick={toggleTheme}
@@ -441,7 +517,7 @@ export default function Layout() {
           </button>
         </div>
 
-        {/* ── Mobile bottom nav (Facebook-style) ─────────────────── */}
+        {/* Mobile bottom nav */}
         <nav className={clsx(
           'lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-white dark:bg-surface-900 border-t border-surface-200 dark:border-white/10 flex items-center justify-around px-1 shadow-lg dark:shadow-black/40 transition-transform duration-200',
           keyboardOpen && 'translate-y-full'
@@ -494,7 +570,7 @@ export default function Layout() {
 
       {createOpen && <CreatePostModal onClose={() => setCreateOpen(false)} />}
 
-      {/* ── Global call overlay — visible from any page ── */}
+      {/* Global call overlay */}
       <CallScreen
         callState={call.callState}
         callType={call.callType}
