@@ -10,8 +10,22 @@ import { Skeleton } from '@/components/ui/PageLoader'
 import toast from 'react-hot-toast'
 import clsx from 'clsx'
 
+function lastSeenLabel(lastActive, isOnline) {
+  if (isOnline) return { text: 'Active now', color: 'text-green-500' }
+  if (!lastActive) return { text: null, color: 'text-gray-400' }
+  const diff = Date.now() - new Date(lastActive).getTime()
+  const m = Math.floor(diff / 60000)
+  if (m < 2)  return { text: 'Active just now', color: 'text-green-400' }
+  if (m < 60) return { text: `Active ${m}m ago`, color: 'text-gray-400' }
+  const h = Math.floor(m / 60)
+  if (h < 24) return { text: `Active ${h}h ago`, color: 'text-gray-400' }
+  const d = Math.floor(h / 24)
+  if (d === 1) return { text: 'Active yesterday', color: 'text-gray-400' }
+  if (d < 7)  return { text: `Active ${d}d ago`, color: 'text-gray-400' }
+  return { text: null, color: 'text-gray-400' }
+}
+
 const TABS = [
-  { key: 'friends',     label: 'Your Friends'},
   { key: 'suggestions', label: 'Suggestions' },
   { key: 'nearby',      label: '📍 Nearby'   },
   { key: 'requests',    label: 'Requests'    },
@@ -32,10 +46,10 @@ export default function Friends() {
     queryFn: async () => {
       const [{ data: rows }, { data: profiles }] = await Promise.all([
         sb.from('friends')
-          .select('*, sender:user_id(id,username,full_name,avatar_url), receiver:friend_id(id,username,full_name,avatar_url)')
+          .select('*, sender:user_id(id,username,full_name,avatar_url,last_active), receiver:friend_id(id,username,full_name,avatar_url,last_active)')
           .or(`user_id.eq.${user.id},friend_id.eq.${user.id}`),
         sb.from('profiles')
-          .select('id,username,full_name,avatar_url,bio,xp')
+          .select('id,username,full_name,avatar_url,bio,xp,last_active')
           .neq('id', user.id)
           .order('full_name', { ascending: true })
           .limit(200),
@@ -352,6 +366,7 @@ function MutualLine({ mutuals }) {
 // ── Facebook-style "Your Friends" list row ────────────────────────────────────
 function FriendRow({ person, mutuals, isOnline, onView, onMessage, onUnfriend }) {
   const [menuOpen, setMenuOpen] = useState(false)
+  const { text: activeText, color: activeColor } = lastSeenLabel(person.last_active, isOnline)
 
   return (
     <div className="flex items-center gap-3 px-1 py-2.5 rounded-xl hover:bg-surface-100 dark:hover:bg-white/5 transition-colors relative">
@@ -365,13 +380,16 @@ function FriendRow({ person, mutuals, isOnline, onView, onMessage, onUnfriend })
         )}
       </div>
 
-      {/* Name + mutuals */}
+      {/* Name + active status + mutuals */}
       <div className="flex-1 min-w-0 cursor-pointer" onClick={onView}>
         <p className="font-semibold text-[15px] text-gray-900 dark:text-white leading-tight truncate">
           {person.full_name}
         </p>
+        {activeText && (
+          <p className={clsx('text-xs font-medium mt-0.5', activeColor)}>{activeText}</p>
+        )}
         <MutualLine mutuals={mutuals} />
-        {!mutuals && (
+        {!mutuals && !activeText && (
           <p className="text-xs text-gray-400 mt-0.5">@{person.username}</p>
         )}
       </div>
@@ -411,6 +429,7 @@ function FriendRow({ person, mutuals, isOnline, onView, onMessage, onUnfriend })
 // ── Facebook-style Suggestion list row ────────────────────────────────────────
 function SuggestionRow({ person, mutuals, sent, isOnline, onAdd, onView, onMessage }) {
   const [dismissed, setDismissed] = useState(false)
+  const { text: activeText, color: activeColor } = lastSeenLabel(person.last_active, isOnline)
   if (dismissed) return null
 
   return (
@@ -425,7 +444,7 @@ function SuggestionRow({ person, mutuals, sent, isOnline, onAdd, onView, onMessa
         )}
       </div>
 
-      {/* Name + mutuals */}
+      {/* Name + active status + mutuals */}
       <div className="flex-1 min-w-0">
         <p
           className="font-semibold text-[15px] text-gray-900 dark:text-white leading-tight truncate cursor-pointer"
@@ -433,8 +452,11 @@ function SuggestionRow({ person, mutuals, sent, isOnline, onAdd, onView, onMessa
         >
           {person.full_name}
         </p>
+        {activeText && (
+          <p className={clsx('text-xs font-medium mt-0.5', activeColor)}>{activeText}</p>
+        )}
         <MutualLine mutuals={mutuals} />
-        {!mutuals && (
+        {!mutuals && !activeText && (
           <p className="text-xs text-gray-400 mt-0.5">@{person.username}</p>
         )}
 
@@ -467,6 +489,7 @@ function SuggestionRow({ person, mutuals, sent, isOnline, onAdd, onView, onMessa
 // ── Facebook-style Request list row ──────────────────────────────────────────
 function RequestRow({ req, mutuals, isOnline, onAccept, onDecline, onView }) {
   const sender = req.sender
+  const { text: activeText, color: activeColor } = lastSeenLabel(sender?.last_active, isOnline)
 
   return (
     <div className="flex items-center gap-3 px-1 py-2.5 rounded-xl hover:bg-surface-100 dark:hover:bg-white/5 transition-colors">
@@ -480,7 +503,7 @@ function RequestRow({ req, mutuals, isOnline, onAccept, onDecline, onView }) {
         )}
       </div>
 
-      {/* Name + mutuals + actions */}
+      {/* Name + active status + mutuals + actions */}
       <div className="flex-1 min-w-0">
         <p
           className="font-semibold text-[15px] text-gray-900 dark:text-white leading-tight truncate cursor-pointer"
@@ -488,8 +511,11 @@ function RequestRow({ req, mutuals, isOnline, onAccept, onDecline, onView }) {
         >
           {sender?.full_name}
         </p>
+        {activeText && (
+          <p className={clsx('text-xs font-medium mt-0.5', activeColor)}>{activeText}</p>
+        )}
         <MutualLine mutuals={mutuals} />
-        {!mutuals && (
+        {!mutuals && !activeText && (
           <p className="text-xs text-gray-400 mt-0.5">@{sender?.username}</p>
         )}
 
