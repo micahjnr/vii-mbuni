@@ -102,6 +102,21 @@ if ('serviceWorker' in navigator) {
       navigator.serviceWorker.addEventListener('message', (e) => {
         if (e.data?.type === 'OFFLINE') { showOfflineBanner() }
         if (e.data?.type === 'ONLINE')  { hideOfflineBanner() }
+
+        // SW inline reply needs the user's JWT to authenticate the push-reply call
+        if (e.data?.type === 'GET_AUTH_TOKEN') {
+          try {
+            // Supabase stores the session in localStorage under this key
+            const raw = Object.keys(localStorage).find(k => k.startsWith('sb-') && k.endsWith('-auth-token'))
+            const session = raw ? JSON.parse(localStorage.getItem(raw)) : null
+            const token = session?.access_token || null
+            e.ports[0]?.postMessage({ token })
+          } catch (_) {
+            e.ports[0]?.postMessage({ token: null })
+          }
+          return
+        }
+
         if (e.data?.type === 'SW_RELOAD') {
           // SW detected stale assets — wipe all caches then hard reload
           caches.keys()
