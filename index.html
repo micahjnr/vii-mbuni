@@ -37,26 +37,26 @@
 
     <title>Vii-Mbuni</title>
 
-    <!-- ── PWA Deep Link: redirect browser → installed app ──────────── -->
+    <!-- ── Open installed PWA when link clicked in browser ──────────── -->
     <script>
       (function () {
-        // If already running as standalone PWA, do nothing
-        var isStandalone =
+        // Already running as installed app — nothing to do
+        var standalone =
           window.matchMedia('(display-mode: standalone)').matches ||
           window.navigator.standalone === true ||
           document.referrer.includes('android-app://')
-        if (isStandalone) return
+        if (standalone) return
 
-        // Check if user has installed the app (we store the date on install)
-        var installed = null
-        try { installed = localStorage.getItem('vii-install-date') } catch (_) {}
+        // Check if user has previously installed the app
+        var installed = false
+        try { installed = !!localStorage.getItem('vii-install-date') } catch (_) {}
         if (!installed) return
 
-        // App is installed but user opened a link in the browser.
-        // Redirect to the same path with ?source=pwa so the OS/browser
-        // can hand off to the installed PWA (via launch_handler in manifest).
+        // User has the app installed but opened a link in the browser.
+        // Adding ?source=pwa triggers the manifest launch_handler which
+        // focuses/opens the installed PWA window instead of the browser tab.
         var url = new URL(window.location.href)
-        if (!url.searchParams.has('source')) {
+        if (url.searchParams.get('source') !== 'pwa') {
           url.searchParams.set('source', 'pwa')
           window.location.replace(url.toString())
         }
