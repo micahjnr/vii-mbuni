@@ -251,6 +251,14 @@ function ReelCard({ reel, index, isActive, muted, user, qc, onActivate, onMuteTo
       } else {
         const { error } = await sb.from('likes').upsert({ post_id: reel.id, user_id: user.id, reaction_type: 'like' }, { onConflict: 'post_id,user_id' })
         if (error) throw error
+        // Notify reel owner (skip self-like)
+        if (reel.user_id !== user.id) {
+          sb.from('notifications').insert({
+            user_id: reel.user_id, actor_id: user.id,
+            type: 'like', reference_id: reel.id,
+            is_read: false, extra_data: { isVideo: true },
+          }).then(() => {}).catch(() => {})
+        }
       }
     },
     onMutate: () => { const p = liked; setLiked(!p); setLikeCount(n => p ? n-1 : n+1) },
