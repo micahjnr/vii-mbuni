@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "app.netlify.vii_mbuni.twa",
+      "sha256_cert_fingerprints": [
+        "1F:6F:F5:DA:5F:29:99:02:D3:3C:7E:F2:7B:BF:76:CB:6D:D8:3F:31:FB:0A:28:3A:8A:6F:A5:B1:EF:0B:E6:45"
+      ]
+    }
+  }
+]
