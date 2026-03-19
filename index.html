@@ -37,6 +37,32 @@
 
     <title>Vii-Mbuni</title>
 
+    <!-- ── PWA Deep Link: redirect browser → installed app ──────────── -->
+    <script>
+      (function () {
+        // If already running as standalone PWA, do nothing
+        var isStandalone =
+          window.matchMedia('(display-mode: standalone)').matches ||
+          window.navigator.standalone === true ||
+          document.referrer.includes('android-app://')
+        if (isStandalone) return
+
+        // Check if user has installed the app (we store the date on install)
+        var installed = null
+        try { installed = localStorage.getItem('vii-install-date') } catch (_) {}
+        if (!installed) return
+
+        // App is installed but user opened a link in the browser.
+        // Redirect to the same path with ?source=pwa so the OS/browser
+        // can hand off to the installed PWA (via launch_handler in manifest).
+        var url = new URL(window.location.href)
+        if (!url.searchParams.has('source')) {
+          url.searchParams.set('source', 'pwa')
+          window.location.replace(url.toString())
+        }
+      })()
+    </script>
+
     <!-- ── Fonts ─────────────────────────────────────────── -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
