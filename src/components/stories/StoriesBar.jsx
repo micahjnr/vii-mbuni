@@ -803,6 +803,7 @@ function CreateStoryModal({ onClose, user, qc }) {
   const [musicBlob, setMusicBlob] = useState(null)       // final trimmed WAV Blob
   const [musicTitle, setMusicTitle] = useState('')
   const [musicLoading, setMusicLoading] = useState(false)
+  const [musicProgress, setMusicProgress] = useState(0) // 0-100 while reading audio file
 
   // Scrubber state — set once the file is decoded, before trimming
   const [scrubbing, setScrubbing] = useState(false)      // true = scrubber visible
@@ -833,12 +834,22 @@ function CreateStoryModal({ onClose, user, qc }) {
     if (f.size > 20 * 1024 * 1024) { toast.error('Audio file must be under 20MB'); return }
 
     setMusicLoading(true)
+    setMusicProgress(0)
     setMusicFile(f)
     setMusicTitle(f.name.replace(/\.[^.]+$/, ''))
+
+    // Simulate progress while decoding (decodeAudioData has no progress API)
+    let prog = 0
+    const progressInterval = setInterval(() => {
+      prog = Math.min(prog + Math.random() * 18, 85)
+      setMusicProgress(Math.round(prog))
+    }, 180)
 
     try {
       // Decode just to get duration (don't trim yet)
       const decoded = await decodeAudioFile(f)
+      clearInterval(progressInterval)
+      setMusicProgress(100)
       const dur = decoded.duration
 
       // Full-file blob URL for scrubber preview playback
@@ -849,11 +860,14 @@ function CreateStoryModal({ onClose, user, qc }) {
       setScrubStart(0)
       setScrubbing(true)
     } catch (err) {
+      clearInterval(progressInterval)
+      setMusicProgress(0)
       console.error(err)
       toast.error('Could not read audio file')
       setMusicFile(null)
     } finally {
       setMusicLoading(false)
+      setMusicProgress(0)
     }
   }
 
@@ -1201,19 +1215,48 @@ function CreateStoryModal({ onClose, user, qc }) {
               <Music size={13} /> Add Music <span className="text-gray-400 font-normal">(30 sec clip)</span>
             </div>
 
-            {/* Phase A: no file chosen yet */}
+            {/* Phase A: no file chosen yet — or loading */}
             {!musicFile && !scrubbing && (
-              <label className="flex items-center gap-3 w-full px-4 py-3 rounded-xl border border-dashed border-purple-300 dark:border-purple-700 bg-purple-50 dark:bg-purple-900/10 hover:bg-purple-100 dark:hover:bg-purple-900/20 cursor-pointer transition-colors">
-                {musicLoading
-                  ? <Loader2 size={18} className="text-purple-400 animate-spin flex-shrink-0" />
-                  : <Music size={18} className="text-purple-400 flex-shrink-0" />
-                }
-                <div>
-                  <div className="text-sm font-semibold text-purple-600 dark:text-purple-400">
-                    {musicLoading ? 'Reading file...' : 'Choose Audio File'}
+              <label className={`flex flex-col gap-2 w-full px-4 py-3 rounded-xl border border-dashed cursor-pointer transition-colors ${musicLoading ? 'border-purple-400 bg-purple-50 dark:bg-purple-900/20' : 'border-purple-300 dark:border-purple-700 bg-purple-50 dark:bg-purple-900/10 hover:bg-purple-100 dark:hover:bg-purple-900/20'}`}>
+                <div className="flex items-center gap-3">
+                  {musicLoading
+                    ? <Loader2 size={18} className="text-purple-400 animate-spin flex-shrink-0" />
+                    : <Music size={18} className="text-purple-400 flex-shrink-0" />
+                  }
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-semibold text-purple-600 dark:text-purple-400">
+                      {musicLoading ? 'Reading audio file…' : 'Choose Audio File'}
+                    </div>
+                    <div className="text-xs text-gray-400">
+                      {musicLoading ? `${musicProgress}% — please wait` : 'MP3, AAC, WAV · pick your 30s clip'}
+                    </div>
                   </div>
-                  <div className="text-xs text-gray-400">MP3, AAC, WAV · pick your 30s clip</div>
+                  {musicLoading && (
+                    <span className="text-sm font-bold text-purple-600 dark:text-purple-400 flex-shrink-0">
+                      {musicProgress}%
+                    </span>
+                  )}
                 </div>
+
+                {/* Progress bar — only shown while loading */}
+                {musicLoading && (
+                  <div className="space-y-1">
+                    <div className="w-full h-2 bg-purple-100 dark:bg-purple-500/20 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-purple-400 to-purple-600 rounded-full transition-all duration-300 ease-out"
+                        style={{ width: `${musicProgress}%` }}
+                      />
+                    </div>
+                    <div className="text-[10px] text-purple-400 text-center">
+                      {musicProgress < 20 ? '🎵 Loading audio…'
+                        : musicProgress < 50 ? '📡 Decoding file…'
+                        : musicProgress < 80 ? '⚡ Almost ready…'
+                        : musicProgress < 100 ? '🏁 Finishing up…'
+                        : '✅ Done!'}
+                    </div>
+                  </div>
+                )}
+
                 <input
                   ref={musicInputRef}
                   type="file"
