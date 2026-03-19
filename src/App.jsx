@@ -8,6 +8,14 @@ import PageLoader from '@/components/ui/PageLoader'
 import toast from 'react-hot-toast'
 import { useDailyStreak } from '@/hooks/useDailyStreak'
 
+// Helper for VAPID key conversion
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
+  const rawData = atob(base64)
+  return Uint8Array.from([...rawData].map(c => c.charCodeAt(0)))
+}
+
 const Home        = lazy(() => import('@/pages/Home'))
 const Explore     = lazy(() => import('@/pages/Explore'))
 const Profile     = lazy(() => import('@/pages/Profile'))
@@ -75,6 +83,54 @@ export default function App() {
       const done = localStorage.getItem('vii-permissions-onboarded')
       if (!done) setShowPermOnboarding(true)
     } catch {}
+  }, [authUser])
+
+  // ── Auto push subscription — runs once per user after login ──────────────
+  // Silently subscribes user to push notifications without any manual click.
+  // Only runs if: user is logged in, browser supports push, permission not
+  // already denied, and user not already subscribed.
+  useEffect(() => {
+    if (!authUser) return
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
+    const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY
+    if (!VAPID_PUBLIC_KEY) return
+
+    const autoSubscribe = async () => {
+      try {
+        // Don't ask if already denied — respect user's choice
+        if (Notification.permission === 'denied') return
+
+        const reg = await navigator.serviceWorker.ready
+        const existing = await reg.pushManager.getSubscription()
+        if (existing) return // Already subscribed, nothing to do
+
+        // Request permission — browser will show popup only if 'default'
+        const permission = await Notification.requestPermission()
+        if (permission !== 'granted') return
+
+        // Subscribe to push
+        const sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+        })
+
+        // Save subscription to backend
+        await fetch('/.netlify/functions/push-subscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: authUser.id, subscription: sub.toJSON() }),
+        })
+
+        console.log('[Push] Auto-subscribed successfully')
+      } catch (err) {
+        // Fail silently — don't bother the user if push setup fails
+        console.warn('[Push] Auto-subscribe failed:', err.message)
+      }
+    }
+
+    // Small delay so app finishes loading first
+    const t = setTimeout(autoSubscribe, 2000)
+    return () => clearTimeout(t)
   }, [authUser])
 
   // Keep a ref to the active channels so we can clean them up properly
