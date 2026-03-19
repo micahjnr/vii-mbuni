@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { UserPlus, UserCheck, UserX, Search, Clock, Users, MessageCircle, ChevronRight, MapPin } from 'lucide-react'
+import { UserPlus, UserCheck, UserX, Search, Clock, Users, MessageCircle, ChevronRight, MapPin, MoreHorizontal } from 'lucide-react'
 import { useAuthStore, useUIStore } from '@/store'
 import sb from '@/lib/supabase'
 import Avatar from '@/components/ui/Avatar'
@@ -162,7 +162,7 @@ export default function Friends() {
   return (
     <div className="animate-fade-in">
 
-      {/* ── Header — Facebook style ───────────────────────────── */}
+      {/* ── Header ───────────────────────────────────────────────── */}
       <div className="mb-4">
         <div className="flex items-center justify-between mb-3">
           <h1 className="text-2xl font-extrabold text-gray-900 dark:text-white">Friends</h1>
@@ -188,7 +188,7 @@ export default function Friends() {
           />
         </div>
 
-        {/* Tabs — pill style like Facebook */}
+        {/* Tabs */}
         <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
           {TABS.map(t => (
             <button
@@ -212,10 +212,10 @@ export default function Friends() {
         </div>
       </div>
 
-      {/* ── Content ───────────────────────────────────────────── */}
+      {/* ── Content ───────────────────────────────────────────────── */}
       {isLoading ? (
-        <div className="grid grid-cols-2 gap-3">
-          {[1,2,3,4].map(i => <SkeletonCard key={i} />)}
+        <div className="space-y-1">
+          {[1,2,3,4,5].map(i => <SkeletonRow key={i} />)}
         </div>
 
       ) : tab === 'suggestions' ? (
@@ -227,12 +227,12 @@ export default function Friends() {
           </div>
         ) : (
           <div>
-            <p className="text-sm font-semibold text-gray-500 dark:text-gray-400 mb-3">
+            <p className="text-sm font-bold text-gray-900 dark:text-white mb-3">
               People you may know
             </p>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
               {suggestions.map(p => (
-                <SuggestionCard
+                <SuggestionRow
                   key={p.id}
                   person={p}
                   mutuals={mutualMap[p.id] || 0}
@@ -248,34 +248,33 @@ export default function Friends() {
         )
 
       ) : tab === 'nearby' ? (
-        <div>
-          {nearbyPeople.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <MapPin size={48} className="text-gray-300 dark:text-gray-600 mb-4" />
-              <p className="font-bold text-lg text-gray-900 dark:text-white">No one nearby yet</p>
-              <p className="text-sm text-gray-400 mt-1 max-w-xs">Add your city in your profile settings to discover people near you</p>
+        nearbyPeople.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <MapPin size={48} className="text-gray-300 dark:text-gray-600 mb-4" />
+            <p className="font-bold text-lg text-gray-900 dark:text-white">No one nearby yet</p>
+            <p className="text-sm text-gray-400 mt-1 max-w-xs">Add your city in your profile settings to discover people near you</p>
+          </div>
+        ) : (
+          <div>
+            <p className="text-sm font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-1.5">
+              <MapPin size={14} /> {nearbyPeople.length} people in your city
+            </p>
+            <div className="space-y-1">
+              {nearbyPeople.map(person => (
+                <SuggestionRow
+                  key={person.id}
+                  person={person}
+                  mutuals={mutualMap[person.id] || 0}
+                  isOnline={onlineUsers.includes(person.id)}
+                  sent={optimisticSent.has(person.id)}
+                  onAdd={() => { sendReq.mutate(person.id); setOptimisticSent(s => new Set([...s, person.id])) }}
+                  onView={() => navigate(`/profile/${person.id}`)}
+                  onMessage={() => navigate(`/messages/${person.id}`)}
+                />
+              ))}
             </div>
-          ) : (
-            <div>
-              <p className="text-sm font-semibold text-gray-500 dark:text-gray-400 mb-3 flex items-center gap-1.5">
-                <MapPin size={14} /> {nearbyPeople.length} people in your city
-              </p>
-              <div className="grid grid-cols-2 gap-3">
-                {nearbyPeople.map(person => (
-                  <SuggestionCard
-                    key={person.id}
-                    profile={person}
-                    mutuals={mutualMap[person.id] || 0}
-                    isOnline={onlineUsers.includes(person.id)}
-                    isSent={optimisticSent.has(person.id)}
-                    onAdd={() => { sendReq.mutate(person.id); setOptimisticSent(s => new Set([...s, person.id])) }}
-                    onView={() => navigate(`/profile/${person.id}`)}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
+          </div>
+        )
 
       ) : tab === 'requests' ? (
         incomingReqs.length === 0 ? (
@@ -286,12 +285,12 @@ export default function Friends() {
           </div>
         ) : (
           <div>
-            <p className="text-sm font-semibold text-gray-500 dark:text-gray-400 mb-3">
+            <p className="text-sm font-bold text-gray-900 dark:text-white mb-3">
               {incomingReqs.length} friend request{incomingReqs.length > 1 ? 's' : ''}
             </p>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
               {incomingReqs.map(req => (
-                <RequestCard
+                <RequestRow
                   key={req.id}
                   req={req}
                   mutuals={mutualMap[req.sender?.id] || 0}
@@ -314,14 +313,15 @@ export default function Friends() {
           </div>
         ) : (
           <div>
-            <p className="text-sm font-semibold text-gray-500 dark:text-gray-400 mb-3">
-              {myFriends.length} friend{myFriends.length > 1 ? 's' : ''}
+            <p className="text-sm font-bold text-gray-900 dark:text-white mb-3">
+              {myFriends.length.toLocaleString()} friend{myFriends.length !== 1 ? 's' : ''}
             </p>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
               {myFriends.map(p => (
-                <FriendCard
+                <FriendRow
                   key={p.id}
                   person={p}
+                  mutuals={mutualMap[p.id] || 0}
                   isOnline={onlineUsers.includes(p.id)}
                   onView={() => navigate(`/profile/${p.id}`)}
                   onMessage={() => navigate(`/messages/${p.id}`)}
@@ -336,194 +336,176 @@ export default function Friends() {
   )
 }
 
-// ── Suggestion Card (Facebook grid style) ─────────────────────────────────────
-function SuggestionCard({ person, mutuals, sent, isOnline, onAdd, onView, onMessage }) {
-  const hue1 = (person.full_name?.charCodeAt(0) || 200) * 5 % 360
-  const hue2 = (person.full_name?.charCodeAt(1) || 100) * 7 % 360
+// ── Shared: mutual friends avatars display ────────────────────────────────────
+function MutualLine({ mutuals }) {
+  if (!mutuals) return null
+  return (
+    <div className="flex items-center gap-1 mt-0.5">
+      <Users size={11} className="text-gray-400 flex-shrink-0" />
+      <span className="text-xs text-gray-500 dark:text-gray-400">
+        {mutuals.toLocaleString()} mutual friend{mutuals !== 1 ? 's' : ''}
+      </span>
+    </div>
+  )
+}
+
+// ── Facebook-style "Your Friends" list row ────────────────────────────────────
+function FriendRow({ person, mutuals, isOnline, onView, onMessage, onUnfriend }) {
+  const [menuOpen, setMenuOpen] = useState(false)
 
   return (
-    <div className="card overflow-hidden hover:shadow-card-lg transition-all duration-200 flex flex-col">
-      {/* Cover banner */}
-      <div
-        className="h-24 w-full cursor-pointer flex-shrink-0"
-        style={{ background: `linear-gradient(135deg, hsl(${hue1},60%,55%), hsl(${hue2},70%,40%))` }}
-        onClick={onView}
-      />
-
-      <div className="px-3 pb-3 flex flex-col flex-1">
-        {/* Avatar overlapping banner */}
-        <div className="-mt-9 mb-2">
-          <div className="relative w-16 h-16 cursor-pointer" onClick={onView}>
-            {isOnline ? (
-              <div className="w-full h-full rounded-full p-[2.5px] gradient-brand border-[3px] border-white dark:border-surface-900 shadow-lg">
-                <div className="w-full h-full rounded-full overflow-hidden">
-                  <Avatar src={person.avatar_url} name={person.full_name} size={56} />
-                </div>
-              </div>
-            ) : (
-              <div className="w-full h-full rounded-full border-[3px] border-white dark:border-surface-900 overflow-hidden shadow-lg">
-                <Avatar src={person.avatar_url} name={person.full_name} size={58} />
-              </div>
-            )}
-            {isOnline && (
-              <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-400 rounded-full border-2 border-white dark:border-surface-900" />
-            )}
-          </div>
+    <div className="flex items-center gap-3 px-1 py-2.5 rounded-xl hover:bg-surface-100 dark:hover:bg-white/5 transition-colors relative">
+      {/* Avatar */}
+      <div className="relative flex-shrink-0 cursor-pointer" onClick={onView}>
+        <div className="w-14 h-14 rounded-full overflow-hidden">
+          <Avatar src={person.avatar_url} name={person.full_name} size={56} />
         </div>
+        {isOnline && (
+          <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-400 rounded-full border-2 border-white dark:border-surface-900" />
+        )}
+      </div>
 
-        {/* Name + mutual */}
-        <div className="flex-1 cursor-pointer mb-2.5" onClick={onView}>
-          <div className="font-bold text-sm text-gray-900 dark:text-white leading-tight line-clamp-1">
-            {person.full_name}
-          </div>
-          {mutuals > 0 ? (
-            <div className="flex items-center gap-1 mt-1">
-              <Users size={11} className="text-gray-400 flex-shrink-0" />
-              <span className="text-xs text-gray-400 line-clamp-1">
-                {mutuals} mutual friend{mutuals > 1 ? 's' : ''}
-              </span>
+      {/* Name + mutuals */}
+      <div className="flex-1 min-w-0 cursor-pointer" onClick={onView}>
+        <p className="font-semibold text-[15px] text-gray-900 dark:text-white leading-tight truncate">
+          {person.full_name}
+        </p>
+        <MutualLine mutuals={mutuals} />
+        {!mutuals && (
+          <p className="text-xs text-gray-400 mt-0.5">@{person.username}</p>
+        )}
+      </div>
+
+      {/* Three-dot menu */}
+      <div className="relative flex-shrink-0">
+        <button
+          onClick={() => setMenuOpen(o => !o)}
+          className="w-9 h-9 rounded-full bg-surface-100 dark:bg-white/10 flex items-center justify-center text-gray-500 hover:bg-surface-200 dark:hover:bg-white/20 transition-colors"
+        >
+          <MoreHorizontal size={20} />
+        </button>
+        {menuOpen && (
+          <>
+            <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
+            <div className="absolute right-0 top-11 z-20 bg-white dark:bg-surface-800 rounded-xl shadow-xl border border-surface-100 dark:border-white/10 overflow-hidden min-w-[160px]">
+              <button
+                onClick={() => { setMenuOpen(false); onMessage() }}
+                className="flex items-center gap-3 px-4 py-3 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-surface-50 dark:hover:bg-white/5 w-full text-left"
+              >
+                <MessageCircle size={16} /> Message
+              </button>
+              <button
+                onClick={() => { setMenuOpen(false); onUnfriend() }}
+                className="flex items-center gap-3 px-4 py-3 text-sm font-medium text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 w-full text-left"
+              >
+                <UserX size={16} /> Unfriend
+              </button>
             </div>
-          ) : (
-            <div className="text-xs text-gray-400 mt-0.5">@{person.username}</div>
-          )}
-        </div>
-
-        {/* Actions */}
-        {sent ? (
-          <div className="flex items-center justify-center gap-1.5 text-xs font-semibold text-gray-400 py-2 bg-surface-100 dark:bg-white/5 rounded-xl">
-            <Clock size={12} /> Requested
-          </div>
-        ) : (
-          <div className="flex flex-col gap-1.5">
-            <button onClick={onAdd} className="btn-primary text-xs py-2 w-full gap-1">
-              <UserPlus size={13} /> Add Friend
-            </button>
-            <button onClick={onMessage} className="btn-secondary text-xs py-1.5 w-full gap-1">
-              <MessageCircle size={13} /> Message
-            </button>
-          </div>
+          </>
         )}
       </div>
     </div>
   )
 }
 
-// ── Request Card (Facebook grid style) ────────────────────────────────────────
-function RequestCard({ req, mutuals, isOnline, onAccept, onDecline, onView }) {
-  const sender = req.sender
-  const hue1 = (sender?.full_name?.charCodeAt(0) || 150) * 5 % 360
-  const hue2 = (sender?.full_name?.charCodeAt(1) || 80) * 7 % 360
+// ── Facebook-style Suggestion list row ────────────────────────────────────────
+function SuggestionRow({ person, mutuals, sent, isOnline, onAdd, onView, onMessage }) {
+  const [dismissed, setDismissed] = useState(false)
+  if (dismissed) return null
 
   return (
-    <div className="card overflow-hidden hover:shadow-card-lg transition-all duration-200 flex flex-col">
-      {/* Cover */}
-      <div
-        className="h-24 w-full cursor-pointer flex-shrink-0"
-        style={{ background: `linear-gradient(135deg, hsl(${hue1},60%,55%), hsl(${hue2},70%,40%))` }}
-        onClick={onView}
-      />
-
-      <div className="px-3 pb-3 flex flex-col flex-1">
-        {/* Avatar */}
-        <div className="-mt-9 mb-2">
-          <div className="relative w-16 h-16 cursor-pointer" onClick={onView}>
-            {isOnline ? (
-              <div className="w-full h-full rounded-full p-[2.5px] gradient-brand border-[3px] border-white dark:border-surface-900 shadow-lg">
-                <div className="w-full h-full rounded-full overflow-hidden">
-                  <Avatar src={sender?.avatar_url} name={sender?.full_name} size={56} />
-                </div>
-              </div>
-            ) : (
-              <div className="w-full h-full rounded-full border-[3px] border-white dark:border-surface-900 overflow-hidden shadow-lg">
-                <Avatar src={sender?.avatar_url} name={sender?.full_name} size={58} />
-              </div>
-            )}
-            {isOnline && (
-              <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-400 rounded-full border-2 border-white dark:border-surface-900" />
-            )}
-          </div>
+    <div className="flex items-center gap-3 px-1 py-2.5 rounded-xl hover:bg-surface-100 dark:hover:bg-white/5 transition-colors">
+      {/* Avatar */}
+      <div className="relative flex-shrink-0 cursor-pointer" onClick={onView}>
+        <div className="w-14 h-14 rounded-full overflow-hidden">
+          <Avatar src={person.avatar_url} name={person.full_name} size={56} />
         </div>
+        {isOnline && (
+          <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-400 rounded-full border-2 border-white dark:border-surface-900" />
+        )}
+      </div>
 
-        {/* Name */}
-        <div className="flex-1 cursor-pointer mb-2.5" onClick={onView}>
-          <div className="font-bold text-sm text-gray-900 dark:text-white leading-tight line-clamp-1">
-            {sender?.full_name}
-          </div>
-          {mutuals > 0 ? (
-            <div className="flex items-center gap-1 mt-1">
-              <Users size={11} className="text-gray-400 flex-shrink-0" />
-              <span className="text-xs text-gray-400 line-clamp-1">
-                {mutuals} mutual friend{mutuals > 1 ? 's' : ''}
-              </span>
+      {/* Name + mutuals */}
+      <div className="flex-1 min-w-0">
+        <p
+          className="font-semibold text-[15px] text-gray-900 dark:text-white leading-tight truncate cursor-pointer"
+          onClick={onView}
+        >
+          {person.full_name}
+        </p>
+        <MutualLine mutuals={mutuals} />
+        {!mutuals && (
+          <p className="text-xs text-gray-400 mt-0.5">@{person.username}</p>
+        )}
+
+        {/* Action buttons — Facebook style */}
+        <div className="flex gap-2 mt-2">
+          {sent ? (
+            <div className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-surface-100 dark:bg-white/10 text-xs font-semibold text-gray-500">
+              <Clock size={12} /> Requested
             </div>
           ) : (
-            <div className="text-xs text-gray-400 mt-0.5">@{sender?.username}</div>
+            <button
+              onClick={onAdd}
+              className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-blue-500 hover:bg-blue-600 text-white text-sm font-semibold transition-colors"
+            >
+              <UserPlus size={14} /> Add friend
+            </button>
           )}
+          <button
+            onClick={() => setDismissed(true)}
+            className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-surface-100 dark:bg-white/10 hover:bg-surface-200 dark:hover:bg-white/20 text-gray-700 dark:text-gray-200 text-sm font-semibold transition-colors"
+          >
+            Remove
+          </button>
         </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Facebook-style Request list row ──────────────────────────────────────────
+function RequestRow({ req, mutuals, isOnline, onAccept, onDecline, onView }) {
+  const sender = req.sender
+
+  return (
+    <div className="flex items-center gap-3 px-1 py-2.5 rounded-xl hover:bg-surface-100 dark:hover:bg-white/5 transition-colors">
+      {/* Avatar */}
+      <div className="relative flex-shrink-0 cursor-pointer" onClick={onView}>
+        <div className="w-14 h-14 rounded-full overflow-hidden">
+          <Avatar src={sender?.avatar_url} name={sender?.full_name} size={56} />
+        </div>
+        {isOnline && (
+          <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-400 rounded-full border-2 border-white dark:border-surface-900" />
+        )}
+      </div>
+
+      {/* Name + mutuals + actions */}
+      <div className="flex-1 min-w-0">
+        <p
+          className="font-semibold text-[15px] text-gray-900 dark:text-white leading-tight truncate cursor-pointer"
+          onClick={onView}
+        >
+          {sender?.full_name}
+        </p>
+        <MutualLine mutuals={mutuals} />
+        {!mutuals && (
+          <p className="text-xs text-gray-400 mt-0.5">@{sender?.username}</p>
+        )}
 
         {/* Confirm / Delete — exactly like Facebook */}
-        <div className="flex flex-col gap-1.5">
-          <button onClick={onAccept} className="btn-primary text-xs py-2 w-full gap-1">
-            <UserCheck size={13} /> Confirm
+        <div className="flex gap-2 mt-2">
+          <button
+            onClick={onAccept}
+            className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-blue-500 hover:bg-blue-600 text-white text-sm font-semibold transition-colors"
+          >
+            <UserCheck size={14} /> Confirm
           </button>
-          <button onClick={onDecline} className="btn-secondary text-xs py-1.5 w-full gap-1 text-gray-600 dark:text-gray-300">
-            <UserX size={13} /> Delete
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ── Friend Card ───────────────────────────────────────────────────────────────
-function FriendCard({ person, isOnline, onView, onMessage, onUnfriend }) {
-  const hue1 = (person.full_name?.charCodeAt(0) || 200) * 5 % 360
-  const hue2 = (person.full_name?.charCodeAt(1) || 100) * 7 % 360
-
-  return (
-    <div className="card overflow-hidden hover:shadow-card-lg transition-all duration-200 flex flex-col">
-      <div
-        className="h-24 w-full cursor-pointer flex-shrink-0"
-        style={{ background: `linear-gradient(135deg, hsl(${hue1},60%,55%), hsl(${hue2},70%,40%))` }}
-        onClick={onView}
-      />
-
-      <div className="px-3 pb-3 flex flex-col flex-1">
-        <div className="-mt-9 mb-2">
-          <div className="relative w-16 h-16 cursor-pointer" onClick={onView}>
-            {isOnline ? (
-              <div className="w-full h-full rounded-full p-[2.5px] gradient-brand border-[3px] border-white dark:border-surface-900 shadow-lg">
-                <div className="w-full h-full rounded-full overflow-hidden">
-                  <Avatar src={person.avatar_url} name={person.full_name} size={56} />
-                </div>
-              </div>
-            ) : (
-              <div className="w-full h-full rounded-full border-[3px] border-white dark:border-surface-900 overflow-hidden shadow-lg">
-                <Avatar src={person.avatar_url} name={person.full_name} size={58} />
-              </div>
-            )}
-            {isOnline && (
-              <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-400 rounded-full border-2 border-white dark:border-surface-900" />
-            )}
-          </div>
-        </div>
-
-        <div className="flex-1 cursor-pointer mb-2.5" onClick={onView}>
-          <div className="font-bold text-sm text-gray-900 dark:text-white leading-tight line-clamp-1">
-            {person.full_name}
-          </div>
-          <div className="text-xs text-gray-400 mt-0.5 line-clamp-1">
-            {person.bio || `@${person.username}`}
-          </div>
-        </div>
-
-        <div className="flex gap-1.5">
-          <button onClick={onMessage} className="btn-primary text-xs py-1.5 flex-1 gap-1">
-            <MessageCircle size={13} /> Message
-          </button>
-          <button onClick={onUnfriend} title="Unfriend"
-            className="btn-secondary text-xs px-2.5 py-1.5 text-red-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10">
-            <UserX size={14} />
+          <button
+            onClick={onDecline}
+            className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-surface-100 dark:bg-white/10 hover:bg-surface-200 dark:hover:bg-white/20 text-gray-700 dark:text-gray-200 text-sm font-semibold transition-colors"
+          >
+            Delete
           </button>
         </div>
       </div>
@@ -531,23 +513,16 @@ function FriendCard({ person, isOnline, onView, onMessage, onUnfriend }) {
   )
 }
 
-function SkeletonCard() {
+// ── Skeleton row ──────────────────────────────────────────────────────────────
+function SkeletonRow() {
   return (
-    <div className="card overflow-hidden">
-      <div className="h-24 bg-surface-200 dark:bg-white/10" />
-      <div className="px-3 pb-3">
-        <div className="-mt-8 mb-2">
-          <div className="w-16 h-16 rounded-full bg-surface-300 dark:bg-white/10 border-2 border-white dark:border-surface-800" />
-        </div>
-        <div className="space-y-2 mb-3">
-          <div className="h-4 w-24 skeleton rounded-lg" />
-          <div className="h-3 w-16 skeleton rounded-lg" />
-        </div>
-        <div className="space-y-1.5">
-          <div className="h-8 skeleton rounded-xl" />
-          <div className="h-7 skeleton rounded-xl" />
-        </div>
+    <div className="flex items-center gap-3 px-1 py-2.5">
+      <div className="w-14 h-14 rounded-full skeleton flex-shrink-0" />
+      <div className="flex-1 space-y-2">
+        <div className="h-4 w-36 skeleton rounded-lg" />
+        <div className="h-3 w-24 skeleton rounded-lg" />
       </div>
+      <div className="w-9 h-9 rounded-full skeleton flex-shrink-0" />
     </div>
   )
 }
