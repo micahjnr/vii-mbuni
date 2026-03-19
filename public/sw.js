@@ -217,6 +217,71 @@ self.addEventListener('notificationclick', e => {
   const action    = e.action
   const target    = notifData.url || '/'
 
+  // ── Inline reply from notification tray ──────────────────────────────────
+  // When the user types and submits a reply directly from the notification,
+  // send it to Supabase via the push-reply function without opening the app.
+  if (action === 'reply' && notifData.type === 'message' && e.reply) {
+    e.waitUntil((async () => {
+      const replyText = e.reply?.trim()
+      if (!replyText) return
+
+      // Get the user's JWT from an open client window's localStorage
+      let token = null
+      try {
+        const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+        for (const client of clients) {
+          const result = await new Promise(resolve => {
+            const channel = new MessageChannel()
+            channel.port1.onmessage = e => resolve(e.data)
+            client.postMessage({ type: 'GET_AUTH_TOKEN' }, [channel.port2])
+            setTimeout(() => resolve(null), 1000)
+          })
+          if (result?.token) { token = result.token; break }
+        }
+      } catch (_) {}
+
+      if (!token) {
+        // No token available — fall back to opening the chat
+        const appUrl = new URL(target, self.location.origin)
+        appUrl.searchParams.set('source', 'pwa')
+        await self.clients.openWindow(appUrl.toString())
+        return
+      }
+
+      try {
+        const res = await fetch('/.netlify/functions/push-reply', {
+          method:  'POST',
+          headers: {
+            'Content-Type':  'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            receiverId: notifData.senderId, // replying to the original sender
+            content:    replyText,
+          }),
+        })
+
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+
+        // Show a brief confirmation notification
+        await self.registration.showNotification('✅ Reply sent', {
+          body:   replyText.length > 60 ? replyText.slice(0, 60) + '…' : replyText,
+          icon:   '/icons/icon-512.png',
+          badge:  '/icons/badge-96.png',
+          tag:    'reply-confirm',
+          silent: true,
+        })
+      } catch (err) {
+        console.error('[SW] Inline reply failed:', err)
+        // On failure, open the chat so the user can send manually
+        const appUrl = new URL(target, self.location.origin)
+        appUrl.searchParams.set('source', 'pwa')
+        await self.clients.openWindow(appUrl.toString())
+      }
+    })())
+    return
+  }
+
   // For incoming call notifications, post a message to the app so it can
   // show the call screen immediately without waiting for a DB poll
   const openAndSignal = (client, msg) => {
