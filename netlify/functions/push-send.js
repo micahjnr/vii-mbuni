@@ -28,32 +28,40 @@ if (!MISSING.length) {
 }
 
 function buildPayload({ type, actorName, actorAvatar, referenceId, extra }) {
+  // Use sender's avatar as the notification icon (like WhatsApp/Instagram)
+  // Fall back to app icon only if no avatar available
+  const personIcon = (actorAvatar && actorAvatar.startsWith('http'))
+    ? actorAvatar
+    : '/icons/icon-512.png'
+
   const base = {
-    icon:               '/icons/icon-512.png',
+    icon:               personIcon,
     badge:              '/icons/badge-96.png',
     vibrate:            [100, 50, 100],
     renotify:           true,
     requireInteraction: false,
-    image:              actorAvatar || null,
+    // Don't use actorAvatar as image — image is for actual media content only
     silent:             false,
   }
 
   const configs = {
     like: {
-      title: 'Vii-Mbuni',
-      body:  extra?.isVideo ? `${actorName} liked your video 🎬👍` : `${actorName} liked your post 👍`,
+      title: extra?.isVideo ? '🎬 New like on your video' : '👍 New like',
+      body:  extra?.isVideo ? `${actorName} liked your video` : `${actorName} liked your post`,
       tag:   'likes',
       data:  { url: referenceId ? `/?post=${referenceId}` : '/' },
-      actions: [{ action: 'view', title: extra?.isVideo ? 'View video' : 'View post' }],
+      actions: [{ action: 'view', title: 'View' }],
     },
     comment: {
-      title: 'New comment',
-      body:  extra?.isVideo ? `${actorName} commented on your video 🎬💬` : `${actorName} commented on your post 💬`,
+      title: `💬 ${actorName}`,
+      body:  extra?.preview
+        ? `"${extra.preview.slice(0, 80)}"`
+        : extra?.isVideo ? 'Commented on your video' : 'Commented on your post',
       tag:   'comments',
       data:  { url: referenceId ? `/?post=${referenceId}` : '/' },
       actions: [
-        { action: 'view',  title: extra?.isVideo ? 'View video' : 'View post' },
-        { action: 'reply', title: 'Reply' },
+        { action: 'view',  title: 'View' },
+        { action: 'reply', title: '↩ Reply' },
       ],
     },
     reply: {
@@ -91,12 +99,14 @@ function buildPayload({ type, actorName, actorAvatar, referenceId, extra }) {
     },
     message: {
       title: actorName,
-      body:  extra?.preview || 'Sent you a message 💬',
+      body:  extra?.preview || '📨 Sent you a message',
       tag:   `dm-${extra?.actorId}`,
       requireInteraction: true,
+      // Show media image only if message contains actual media (not avatar)
+      ...(extra?.mediaUrl && extra.mediaUrl.startsWith('http') ? { image: extra.mediaUrl } : {}),
       data:  { url: extra?.actorId ? `/messages/${extra.actorId}` : '/messages' },
       actions: [
-        { action: 'reply', title: 'Reply' },
+        { action: 'reply', title: '↩ Reply' },
         { action: 'view',  title: 'Open' },
       ],
     },
