@@ -290,7 +290,18 @@ export default function Groups() {
   })
 
   const joinMutation = useMutation({
-    mutationFn: (groupId) => sb.from('group_members').insert({ group_id: groupId, user_id: user.id, role: 'member' }),
+    mutationFn: async (groupId) => {
+      await sb.from('group_members').insert({ group_id: groupId, user_id: user.id, role: 'member' })
+      // Notify group admin
+      const { data: grp } = await sb.from('groups').select('created_by, name').eq('id', groupId).single()
+      if (grp?.created_by && grp.created_by !== user.id) {
+        sb.from('notifications').insert({
+          user_id: grp.created_by, actor_id: user.id,
+          type: 'group_join', reference_id: groupId,
+          is_read: false, extra_data: { groupName: grp.name },
+        }).then(() => {}).catch(() => {})
+      }
+    },
     onSuccess: () => { qc.invalidateQueries(['groups']); toast.success('Joined group!') },
     onError: () => toast.error('Could not join group'),
   })
