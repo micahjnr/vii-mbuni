@@ -1,0 +1,5 @@
+# Pass-through for Android TWA verification — must come before SPA catch-all
+/.well-known/assetlinks.json  /.well-known/assetlinks.json  200!
+
+# SPA catch-all — serves index.html for all other routes
+/*  /index.html  200
