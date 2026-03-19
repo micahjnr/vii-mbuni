@@ -46,6 +46,24 @@ function buildPayload({ type, actorName, actorAvatar, referenceId, extra }) {
       data:  { url: referenceId ? `/?post=${referenceId}` : '/' },
       actions: [{ action: 'view', title: extra?.isVideo ? 'View video' : 'View post' }],
     },
+    // ── Story likes & comments (were missing — caused silent drop) ──────────
+    story_like: {
+      title: 'Vii-Mbuni',
+      body:  `${actorName} liked your story ❤️`,
+      tag:   'story-likes',
+      data:  { url: '/' },
+      actions: [{ action: 'view', title: 'View story' }],
+    },
+    story_comment: {
+      title: 'New story comment',
+      body:  `${actorName} commented on your story 💬`,
+      tag:   'story-comments',
+      data:  { url: '/' },
+      actions: [
+        { action: 'view',  title: 'View story' },
+        { action: 'reply', title: 'Reply' },
+      ],
+    },
     comment: {
       title: 'New comment',
       body:  extra?.isVideo ? `${actorName} commented on your video 🎬💬` : `${actorName} commented on your post 💬`,
@@ -136,7 +154,8 @@ function buildPayload({ type, actorName, actorAvatar, referenceId, extra }) {
       requireInteraction: true,
       renotify: true,
       vibrate: [200, 100, 200, 100, 200],
-      data:  { url: `/messages/${actor_id}`, sessionId: extra?.sessionId, callType: extra?.callType },
+      // ── FIX: was `actor_id` (undefined in this scope) → use extra.actorId ──
+      data:  { url: `/messages/${extra?.actorId}`, sessionId: extra?.sessionId, callType: extra?.callType },
       actions: [
         { action: 'answer',  title: '✅ Answer' },
         { action: 'decline', title: '❌ Decline' },
