@@ -12,7 +12,7 @@ import Avatar from '@/components/ui/Avatar'
 import ViiMbuniLogo from '@/components/ui/ViiMbuniLogo'
 import NotifPanel from '@/components/ui/NotifPanel'
 import CreatePostModal from '@/components/feed/CreatePostModal'
-import InstallBanner from '@/components/ui/InstallBanner'
+import { usePWAInstall } from '@/hooks/usePWAInstall'
 import { usePushNotifications } from '@/hooks/usePushNotifications'
 import { useWebRTCCall } from '@/hooks/useWebRTCCall'
 import { CallContext } from '@/lib/CallContext'
@@ -54,61 +54,20 @@ export default function Layout() {
   const [createOpen, setCreateOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [keyboardOpen, setKeyboardOpen] = useState(false)
-  const [showInstallBanner, setShowInstallBanner] = useState(false)
+  const [installing, setInstalling] = useState(false)
+  const { isInstalled, canInstall, install } = usePWAInstall()
 
-  // ── PWA Install prompt ────────────────────────────────────────────────────
-  const [installPrompt, setInstallPrompt] = useState(() => window.__viiInstallPrompt || null)
-  const [isInstalled, setIsInstalled] = useState(false)
-  const [showIOSHint, setShowIOSHint] = useState(false)
-
-  useEffect(() => {
-    if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) {
-      setIsInstalled(true)
-      return
-    }
-    // Pick up prompt if it already fired before this component mounted
-    if (window.__viiInstallPrompt) setInstallPrompt(window.__viiInstallPrompt)
-
-    const handler = (e) => {
-      e.preventDefault()
-      window.__viiInstallPrompt = e   // store globally so it's never lost
-      setInstallPrompt(e)
-    }
-    window.addEventListener('beforeinstallprompt', handler)
-    window.addEventListener('appinstalled', () => {
-      setIsInstalled(true)
-      setInstallPrompt(null)
-      window.__viiInstallPrompt = null
-      try { localStorage.setItem('vii-install-date', Date.now()) } catch (_) {}
+  const handleInstall = async () => {
+    if (installing) return
+    setInstalling(true)
+    const result = await install()
+    if (result === 'installed') {
+      // Open immediately in standalone mode
       const url = new URL(window.location.href)
       url.searchParams.set('source', 'pwa')
       window.location.replace(url.toString())
-    })
-    return () => window.removeEventListener('beforeinstallprompt', handler)
-  }, [])
-
-  const handleInstall = async () => {
-    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent)
-    const prompt = installPrompt || window.__viiInstallPrompt
-    if (prompt) {
-      // Native one-tap install — browser handles everything
-      try {
-        await prompt.prompt()
-        const { outcome } = await prompt.userChoice
-        if (outcome === 'accepted') {
-          setInstallPrompt(null)
-          window.__viiInstallPrompt = null
-          setIsInstalled(true)
-        }
-      } catch (_) {
-        // Prompt already used or dismissed — show banner fallback
-        setShowInstallBanner(true)
-      }
-    } else if (isIOS) {
-      setShowIOSHint(true)
     } else {
-      // No native prompt yet (browser hasn't decided eligibility) — show banner with instructions
-      setShowInstallBanner(true)
+      setInstalling(false)
     }
   }
 
@@ -297,48 +256,34 @@ export default function Layout() {
     return (
       <button
         onClick={handleInstall}
+        disabled={installing}
         className={clsx(
           'flex items-center gap-2 w-full px-3 py-2.5 rounded-xl text-sm font-semibold transition-all',
           'bg-brand-50 dark:bg-brand-500/10 text-brand-600 dark:text-brand-400',
           'hover:bg-brand-100 dark:hover:bg-brand-500/20 border border-brand-200 dark:border-brand-500/20',
+          installing && 'opacity-70 cursor-wait',
           className
         )}
       >
-        <Download size={16} />
-        <span>Install App</span>
+        {installing ? (
+          <>
+            <svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" strokeLinecap="round"/>
+            </svg>
+            <span>Installing...</span>
+          </>
+        ) : (
+          <>
+            <Download size={16} />
+            <span>Install App</span>
+          </>
+        )}
       </button>
     )
   }
 
   return (
     <div className="flex min-h-screen bg-surface-50 dark:bg-surface-950">
-
-      {/* ── iOS install hint — minimal visual only ───────────────────── */}
-      {showIOSHint && (
-        <div className="fixed inset-0 z-[100] bg-black/60 flex items-end justify-center p-4" onClick={() => setShowIOSHint(false)}>
-          <div className="bg-white dark:bg-surface-900 rounded-2xl p-5 w-full max-w-sm shadow-2xl" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center gap-3 mb-4">
-              <img src="/icons/icon-96.png" alt="Vii-Mbuni" className="w-12 h-12 rounded-xl" />
-              <div>
-                <div className="font-bold text-gray-900 dark:text-white">Install Vii-Mbuni</div>
-                <div className="text-xs text-gray-400">Add to your home screen</div>
-              </div>
-            </div>
-            <div className="flex items-center justify-center gap-4 py-3 bg-surface-50 dark:bg-white/5 rounded-xl">
-              <div className="flex flex-col items-center gap-1 text-gray-500 dark:text-gray-300">
-                <span className="text-3xl">⬆️</span>
-                <span className="text-[11px]">Share</span>
-              </div>
-              <span className="text-gray-300 dark:text-white/20 text-xl">→</span>
-              <div className="flex flex-col items-center gap-1 text-gray-500 dark:text-gray-300">
-                <span className="text-3xl">➕</span>
-                <span className="text-[11px]">Add to Home</span>
-              </div>
-            </div>
-            <button onClick={() => setShowIOSHint(false)} className="btn-primary w-full mt-4">OK</button>
-          </div>
-        </div>
-      )}
 
       {/* ── Desktop sidebar ─────────────────────────────────────────── */}
       <aside className="hidden lg:flex flex-col w-64 h-screen sticky top-0 p-4 border-r border-surface-200 dark:border-white/5 bg-white dark:bg-surface-900 overflow-y-auto scrollbar-hide flex-shrink-0">
@@ -566,10 +511,6 @@ export default function Layout() {
       </div>
 
       {createOpen && <CreatePostModal onClose={() => setCreateOpen(false)} />}
-
-      {showInstallBanner && (
-        <InstallBanner onClose={() => setShowInstallBanner(false)} />
-      )}
 
       <CallScreen
         callState={call.callState}
