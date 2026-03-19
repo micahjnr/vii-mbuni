@@ -8,12 +8,16 @@ import PageLoader from '@/components/ui/PageLoader'
 import toast from 'react-hot-toast'
 import { useDailyStreak } from '@/hooks/useDailyStreak'
 
-const Home        = lazy(() => import('@/pages/Home'))
+// ── Bottom nav pages: imported directly (no lazy) so they NEVER show loader on tab switch
+import Home        from '@/pages/Home'
+import Friends     from '@/pages/Friends'
+import Messages    from '@/pages/Messages'
+import ZaarCulture from '@/pages/ZaarCulture'
+import Profile     from '@/pages/Profile'
+
+// ── Everything else: lazy loaded (only loads when user visits)
 const Explore     = lazy(() => import('@/pages/Explore'))
-const Profile     = lazy(() => import('@/pages/Profile'))
-const Messages    = lazy(() => import('@/pages/Messages'))
 const Chat        = lazy(() => import('@/pages/Chat'))
-const Friends     = lazy(() => import('@/pages/Friends'))
 const Groups      = lazy(() => import('@/pages/Groups'))
 const Events      = lazy(() => import('@/pages/Events'))
 const Reels       = lazy(() => import('@/pages/Reels'))
@@ -25,12 +29,14 @@ const Challenges  = lazy(() => import('@/pages/Challenges'))
 const Bookmarks   = lazy(() => import('@/pages/Bookmarks'))
 const AIAssistant = lazy(() => import('@/pages/AIAssistant'))
 const PostDetail  = lazy(() => import('@/pages/PostDetail'))
-const ZaarCulture = lazy(() => import('@/pages/ZaarCulture'))
 const Settings    = lazy(() => import('@/pages/Settings'))
 const CallDiag      = lazy(() => import('@/pages/CallDiag'))
 const ResetPassword = lazy(() => import('@/pages/ResetPassword'))
 const Terms         = lazy(() => import('@/pages/Terms'))
 const About         = lazy(() => import('@/pages/About'))
+
+// Tiny fallback — just keeps layout stable, no full-screen loader
+const TabFallback = () => <div style={{ minHeight: '60vh' }} />
 
 function AuthGuard({ children }) {
   const { user, loading, setLoading } = useAuthStore()
@@ -309,24 +315,27 @@ export default function App() {
         <Route path="/about"          element={<About />} />
 
         <Route path="/" element={<AuthGuard><Layout /></AuthGuard>}>
+          {/* Bottom nav pages — no lazy, instant switch */}
           <Route index          element={<Home />} />
-          <Route path="explore" element={<Explore />} />
-          <Route path="reels"   element={<Reels />} />
           <Route path="friends" element={<Friends />} />
           <Route path="messages"element={<Messages />} />
-          <Route path="messages/:userId" element={<Chat />} />
-          <Route path="groups"  element={<Groups />} />
-          <Route path="events"  element={<Events />} />
-          <Route path="analytics" element={<Analytics />} />
-          <Route path="challenges" element={<Challenges />} />
-          <Route path="bookmarks"  element={<Bookmarks />} />
-          <Route path="ai"         element={<AIAssistant />} />
-          <Route path="post/:postId" element={<PostDetail />} />
+          <Route path="messages/:userId" element={<Suspense fallback={<TabFallback />}><Chat /></Suspense>} />
           <Route path="zaar-culture" element={<ZaarCulture />} />
-          <Route path="settings"     element={<Settings />} />
           <Route path="profile" element={<Profile />} />
           <Route path="profile/:userId" element={<Profile />} />
-          <Route path="call-diag" element={<CallDiag />} />
+
+          {/* Secondary pages — lazy with silent fallback */}
+          <Route path="explore"    element={<Suspense fallback={<TabFallback />}><Explore /></Suspense>} />
+          <Route path="reels"      element={<Suspense fallback={<TabFallback />}><Reels /></Suspense>} />
+          <Route path="groups"     element={<Suspense fallback={<TabFallback />}><Groups /></Suspense>} />
+          <Route path="events"     element={<Suspense fallback={<TabFallback />}><Events /></Suspense>} />
+          <Route path="analytics"  element={<Suspense fallback={<TabFallback />}><Analytics /></Suspense>} />
+          <Route path="challenges" element={<Suspense fallback={<TabFallback />}><Challenges /></Suspense>} />
+          <Route path="bookmarks"  element={<Suspense fallback={<TabFallback />}><Bookmarks /></Suspense>} />
+          <Route path="ai"         element={<Suspense fallback={<TabFallback />}><AIAssistant /></Suspense>} />
+          <Route path="post/:postId" element={<Suspense fallback={<TabFallback />}><PostDetail /></Suspense>} />
+          <Route path="settings"   element={<Suspense fallback={<TabFallback />}><Settings /></Suspense>} />
+          <Route path="call-diag"  element={<Suspense fallback={<TabFallback />}><CallDiag /></Suspense>} />
         </Route>
 
         <Route path="*" element={<NotFound />} />
