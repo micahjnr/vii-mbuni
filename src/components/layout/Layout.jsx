@@ -35,7 +35,6 @@ const NAV = [
   { to: '/settings',   icon: null,          label: 'Settings', settings: true },
 ]
 
-// Bottom nav items (mobile only — most important 5)
 const BOTTOM_NAV = [
   { to: '/',         icon: Home,          label: 'Home',     end: true },
   { to: '/friends',  icon: Users,         label: 'Friends'            },
@@ -61,50 +60,81 @@ export default function Layout() {
   const [showIOSHint, setShowIOSHint] = useState(false)
 
   useEffect(() => {
-    // Check if already installed
     if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) {
       setIsInstalled(true)
       return
     }
-
-    // Capture the beforeinstallprompt event (Chrome, Edge, Samsung Internet)
-    const handler = (e) => {
-      e.preventDefault()
-      setInstallPrompt(e)
-    }
+    const handler = (e) => { e.preventDefault(); setInstallPrompt(e) }
     window.addEventListener('beforeinstallprompt', handler)
-
-    // Listen for successful install
-    window.addEventListener('appinstalled', () => {
-      setIsInstalled(true)
-      setInstallPrompt(null)
-    })
-
+    window.addEventListener('appinstalled', () => { setIsInstalled(true); setInstallPrompt(null) })
     return () => window.removeEventListener('beforeinstallprompt', handler)
   }, [])
 
   const handleInstall = async () => {
     const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent)
     const isFirefox = /firefox/i.test(navigator.userAgent)
-
     if (installPrompt) {
-      // Chrome / Edge / Samsung Internet — show native prompt
       await installPrompt.prompt()
       const { outcome } = await installPrompt.userChoice
-      if (outcome === 'accepted') {
-        setInstallPrompt(null)
-        setIsInstalled(true)
-      }
+      if (outcome === 'accepted') { setInstallPrompt(null); setIsInstalled(true) }
     } else if (isIOS) {
-      // iOS Safari — show manual hint
       setShowIOSHint(true)
     } else if (isFirefox) {
-      // Firefox — open install guide
       alert('To install: Click the 3-dot menu → "Install" or "Add to Home Screen"')
     } else {
-      // Other browsers
       alert('To install: Open your browser menu and tap "Add to Home Screen" or "Install App"')
     }
+  }
+
+  // ── Draggable floating theme toggle ──────────────────────────────────────
+  const TOGGLE_SIZE = 44
+  const BOTTOM_NAV_H = 72
+  const getDefaultPos = () => ({
+    x: window.innerWidth - TOGGLE_SIZE - 16,
+    y: window.innerHeight - BOTTOM_NAV_H - TOGGLE_SIZE - 16,
+  })
+  const [togglePos, setTogglePos] = useState(() => {
+    try {
+      const saved = localStorage.getItem('vii-toggle-pos')
+      return saved ? JSON.parse(saved) : getDefaultPos()
+    } catch { return getDefaultPos() }
+  })
+  const dragRef = useRef(null)
+  const isDragging = useRef(false)
+  const dragStart = useRef({ x: 0, y: 0, bx: 0, by: 0 })
+  const dragMoved = useRef(false)
+
+  const clampPos = (x, y) => ({
+    x: Math.max(0, Math.min(window.innerWidth - TOGGLE_SIZE, x)),
+    y: Math.max(0, Math.min(window.innerHeight - BOTTOM_NAV_H - TOGGLE_SIZE, y)),
+  })
+
+  const onPointerDown = (e) => {
+    isDragging.current = true
+    dragMoved.current = false
+    dragStart.current = { x: e.clientX, y: e.clientY, bx: togglePos.x, by: togglePos.y }
+    dragRef.current?.setPointerCapture(e.pointerId)
+  }
+
+  const onPointerMove = (e) => {
+    if (!isDragging.current) return
+    const dx = e.clientX - dragStart.current.x
+    const dy = e.clientY - dragStart.current.y
+    if (Math.abs(dx) > 4 || Math.abs(dy) > 4) dragMoved.current = true
+    const pos = clampPos(dragStart.current.bx + dx, dragStart.current.by + dy)
+    setTogglePos(pos)
+  }
+
+  const onPointerUp = () => {
+    if (!isDragging.current) return
+    isDragging.current = false
+    // Snap to nearest left or right edge
+    const snapX = togglePos.x < window.innerWidth / 2 ? 8 : window.innerWidth - TOGGLE_SIZE - 8
+    const snapped = clampPos(snapX, togglePos.y)
+    setTogglePos(snapped)
+    try { localStorage.setItem('vii-toggle-pos', JSON.stringify(snapped)) } catch {}
+    // Only toggle theme if it was a tap, not a drag
+    if (!dragMoved.current) toggleTheme()
   }
 
   const navigate = useNavigate()
@@ -114,7 +144,6 @@ export default function Layout() {
   const incomingRingCtxRef = useRef(null)
   const incomingRingStopRef = useRef(null)
 
-  // ── Global WebRTC call hook — runs on every page ──────────────────────────
   const call = useWebRTCCall({
     user,
     onIncomingCall: ({ caller }) => {
@@ -163,19 +192,12 @@ export default function Layout() {
         if (!sessionId || !user?.id) return
         import('@/lib/supabase').then(({ default: sb }) => {
           sb.from('voice_sessions')
-            .select('*')
-            .eq('id', sessionId)
-            .eq('status', 'ringing')
-            .single()
+            .select('*').eq('id', sessionId).eq('status', 'ringing').single()
             .then(({ data: session }) => {
               if (!session) return
               sb.from('profiles')
-                .select('id, username, full_name, avatar_url')
-                .eq('id', session.caller_id)
-                .single()
-                .then(({ data: caller }) => {
-                  if (caller) call.acceptCall(session, caller)
-                })
+                .select('id, username, full_name, avatar_url').eq('id', session.caller_id).single()
+                .then(({ data: caller }) => { if (caller) call.acceptCall(session, caller) })
             })
         })
       }
@@ -211,10 +233,7 @@ export default function Layout() {
     return () => document.removeEventListener('mousedown', handler)
   }, [notifOpen])
 
-  const handleSignOut = async () => {
-    await signOut()
-    navigate('/login')
-  }
+  const handleSignOut = async () => { await signOut(); navigate('/login') }
 
   const handleSearch = (e) => {
     e.preventDefault()
@@ -223,9 +242,7 @@ export default function Layout() {
 
   const renderNavLink = ({ to, icon: Icon, label, badge, ai, end, settings: isSettings }) => (
     <NavLink
-      key={to}
-      to={to}
-      end={end ?? to === '/'}
+      key={to} to={to} end={end ?? to === '/'}
       onClick={() => setDrawerOpen(false)}
       className={({ isActive }) => clsx(
         'nav-item',
@@ -249,7 +266,6 @@ export default function Layout() {
     </NavLink>
   )
 
-  // Install button component reused in sidebar + drawer
   const InstallButton = ({ className = '' }) => {
     if (isInstalled) return null
     return (
@@ -289,35 +305,18 @@ export default function Layout() {
 
       {/* ── Desktop sidebar ─────────────────────────────────────────── */}
       <aside className="hidden lg:flex flex-col w-64 h-screen sticky top-0 p-4 border-r border-surface-200 dark:border-white/5 bg-white dark:bg-surface-900 overflow-y-auto scrollbar-hide flex-shrink-0">
-        <div className="flex items-center gap-2.5 px-2 mb-6">
-          <ViiMbuniLogo size="sm" />
-        </div>
-
+        <div className="flex items-center gap-2.5 px-2 mb-6"><ViiMbuniLogo size="sm" /></div>
         <form onSubmit={handleSearch} className="mb-4">
           <div className="relative">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Search..."
-              className="input pl-9 py-2 text-xs"
-            />
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search..." className="input pl-9 py-2 text-xs" />
           </div>
         </form>
-
-        <nav className="flex flex-col gap-0.5 flex-1">
-          {NAV.map(renderNavLink)}
-        </nav>
-
+        <nav className="flex flex-col gap-0.5 flex-1">{NAV.map(renderNavLink)}</nav>
         <button onClick={() => setCreateOpen(true)} className="btn-primary w-full mt-4 py-2.5">
           <span className="text-lg leading-none">+</span> Create Post
         </button>
-
-        {/* Install button — desktop sidebar */}
-        <div className="mt-2">
-          <InstallButton />
-        </div>
-
+        <div className="mt-2"><InstallButton /></div>
         <div className="mt-4 pt-4 border-t border-surface-200 dark:border-white/5 flex items-center gap-3">
           <Avatar src={profile?.avatar_url} name={profile?.full_name} size={36} onClick={() => navigate('/profile')} className="cursor-pointer" />
           <div className="flex-1 min-w-0">
@@ -350,20 +349,14 @@ export default function Layout() {
         )}
         onClick={() => setDrawerOpen(false)}
       />
-
-      <div
-        className={clsx(
-          'lg:hidden fixed left-0 top-0 bottom-0 z-50 w-72 bg-white dark:bg-surface-900 shadow-2xl flex flex-col transition-transform duration-300 ease-out',
-          drawerOpen ? 'translate-x-0' : '-translate-x-full'
-        )}
-      >
+      <div className={clsx(
+        'lg:hidden fixed left-0 top-0 bottom-0 z-50 w-72 bg-white dark:bg-surface-900 shadow-2xl flex flex-col transition-transform duration-300 ease-out',
+        drawerOpen ? 'translate-x-0' : '-translate-x-full'
+      )}>
         <div className="flex items-center justify-between px-4 py-4 border-b border-surface-200 dark:border-white/10">
           <ViiMbuniLogo size="sm" />
-          <button onClick={() => setDrawerOpen(false)} className="btn-icon text-gray-500">
-            <X size={20} />
-          </button>
+          <button onClick={() => setDrawerOpen(false)} className="btn-icon text-gray-500"><X size={20} /></button>
         </div>
-
         <div className="flex items-center gap-3 px-4 py-3 border-b border-surface-200 dark:border-white/10">
           <Avatar src={profile?.avatar_url} name={profile?.full_name} size={42}
             onClick={() => { navigate('/profile'); setDrawerOpen(false) }} className="cursor-pointer" />
@@ -372,19 +365,12 @@ export default function Layout() {
             <div className="text-xs text-gray-400 truncate">@{profile?.username}</div>
           </div>
         </div>
-
-        <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-0.5">
-          {NAV.map(renderNavLink)}
-        </nav>
-
+        <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-0.5">{NAV.map(renderNavLink)}</nav>
         <div className="px-4 py-3 border-t border-surface-200 dark:border-white/10 space-y-2">
           <button onClick={() => { setCreateOpen(true); setDrawerOpen(false) }} className="btn-primary w-full py-2.5">
             + Create Post
           </button>
-
-          {/* Install button — mobile drawer */}
           <InstallButton />
-
           <div className="flex items-center justify-between pt-1">
             <div className="flex items-center gap-2">
               {pushSupported && (
@@ -413,29 +399,17 @@ export default function Layout() {
 
         {/* Mobile topbar */}
         <header className="lg:hidden sticky top-0 z-30 bg-white dark:bg-surface-900 border-b border-surface-200 dark:border-white/10 px-3 py-2.5 flex items-center gap-2 shadow-sm">
-          <button
-            onClick={() => setDrawerOpen(true)}
-            className="w-9 h-9 flex items-center justify-center rounded-xl text-gray-700 dark:text-white hover:bg-surface-100 dark:hover:bg-white/10 transition-colors flex-shrink-0"
-          >
+          <button onClick={() => setDrawerOpen(true)}
+            className="w-9 h-9 flex items-center justify-center rounded-xl text-gray-700 dark:text-white hover:bg-surface-100 dark:hover:bg-white/10 transition-colors flex-shrink-0">
             <Menu size={22} />
           </button>
-
-          <div className="flex-1 flex items-center">
-            <ViiMbuniLogo size="sm" />
-          </div>
-
+          <div className="flex-1 flex items-center"><ViiMbuniLogo size="sm" /></div>
           <form onSubmit={handleSearch} className="hidden sm:flex flex-1 max-w-xs mx-2">
             <div className="relative w-full">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder="Search..."
-                className="input pl-8 py-1.5 text-xs"
-              />
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search..." className="input pl-8 py-1.5 text-xs" />
             </div>
           </form>
-
           <div className="flex items-center gap-1.5 flex-shrink-0">
             <div className="relative" ref={notifRef}>
               <button
@@ -444,7 +418,6 @@ export default function Layout() {
                 onPointerDown={() => { if (!pushSupported) return; const t = setTimeout(() => togglePush(), 600); window.__bellTimer = t }}
                 onPointerUp={() => clearTimeout(window.__bellTimer)}
                 onPointerLeave={() => clearTimeout(window.__bellTimer)}
-                title={pushSupported ? (pushEnabled ? 'Notifications on — hold to disable push' : 'Notifications — hold to enable push') : 'Notifications'}
                 className="relative w-9 h-9 flex items-center justify-center rounded-xl bg-surface-100 dark:bg-white/10 text-gray-700 dark:text-white hover:bg-surface-200 dark:hover:bg-white/20 transition-colors"
               >
                 {pushSupported && !pushEnabled ? <BellOff size={20} className="text-gray-400" /> : <Bell size={20} />}
@@ -457,17 +430,9 @@ export default function Layout() {
                   <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-brand-500 rounded-full border-2 border-white dark:border-surface-900" />
                 )}
               </button>
-              {notifOpen && (
-                <div className="absolute right-0 top-11 z-50">
-                  <NotifPanel onClose={() => setNotifOpen(false)} />
-                </div>
-              )}
+              {notifOpen && <div className="absolute right-0 top-11 z-50"><NotifPanel onClose={() => setNotifOpen(false)} /></div>}
             </div>
-
-            <button
-              onClick={() => navigate('/profile')}
-              className="w-9 h-9 rounded-xl overflow-hidden ring-2 ring-brand-400 dark:ring-brand-500 flex-shrink-0"
-            >
+            <button onClick={() => navigate('/profile')} className="w-9 h-9 rounded-xl overflow-hidden ring-2 ring-brand-400 dark:ring-brand-500 flex-shrink-0">
               <Avatar src={profile?.avatar_url} name={profile?.full_name} size={36} />
             </button>
           </div>
@@ -484,14 +449,9 @@ export default function Layout() {
                 </span>
               )}
             </button>
-            {notifOpen && (
-              <div className="absolute right-0 top-11 z-50">
-                <NotifPanel onClose={() => setNotifOpen(false)} />
-              </div>
-            )}
+            {notifOpen && <div className="absolute right-0 top-11 z-50"><NotifPanel onClose={() => setNotifOpen(false)} /></div>}
           </div>
-          <Avatar src={profile?.avatar_url} name={profile?.full_name} size={34}
-            onClick={() => navigate('/profile')} className="cursor-pointer" />
+          <Avatar src={profile?.avatar_url} name={profile?.full_name} size={34} onClick={() => navigate('/profile')} className="cursor-pointer" />
         </header>
 
         <main className="flex-1 p-4 lg:p-6 max-w-3xl mx-auto w-full pb-20 lg:pb-6 overflow-x-hidden">
@@ -500,11 +460,24 @@ export default function Layout() {
           </CallContext.Provider>
         </main>
 
-        {/* Floating theme toggle — mobile only */}
-        <div className="lg:hidden fixed bottom-20 right-4 z-40">
-          <button
-            onClick={toggleTheme}
-            className="w-11 h-11 rounded-full shadow-xl flex items-center justify-center transition-all active:scale-90 border backdrop-blur-sm"
+        {/* ── Draggable floating theme toggle — mobile only ────────── */}
+        <div
+          ref={dragRef}
+          className="lg:hidden fixed z-40 touch-none select-none"
+          style={{
+            left: togglePos.x,
+            top: togglePos.y,
+            width: TOGGLE_SIZE,
+            height: TOGGLE_SIZE,
+            cursor: 'grab',
+          }}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
+        >
+          <div
+            className="w-full h-full rounded-full shadow-xl flex items-center justify-center border backdrop-blur-sm"
             style={{
               background: theme === 'dark' ? 'rgba(30,30,63,0.95)' : 'rgba(255,255,255,0.95)',
               borderColor: theme === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
@@ -512,36 +485,28 @@ export default function Layout() {
             aria-label="Toggle theme"
           >
             {theme === 'dark'
-              ? <Sun size={18} className="text-yellow-400" />
-              : <Moon size={18} className="text-indigo-500" />}
-          </button>
+              ? <Sun size={18} className="text-yellow-400 pointer-events-none" />
+              : <Moon size={18} className="text-indigo-500 pointer-events-none" />}
+          </div>
         </div>
 
         {/* Mobile bottom nav */}
         <nav className={clsx(
           'lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-white dark:bg-surface-900 border-t border-surface-200 dark:border-white/10 flex items-center justify-around px-1 shadow-lg dark:shadow-black/40 transition-transform duration-200',
           keyboardOpen && 'translate-y-full'
-        )}
-        style={{ paddingBottom: 'max(0.25rem, env(safe-area-inset-bottom))' }}>
+        )} style={{ paddingBottom: 'max(0.25rem, env(safe-area-inset-bottom))' }}>
           {BOTTOM_NAV.map(({ to, icon: Icon, label, badge, end, zaar }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={end}
+            <NavLink key={to} to={to} end={end}
               className={({ isActive }) => clsx(
                 'flex flex-col items-center justify-center gap-0.5 flex-1 py-2 px-1 transition-colors relative',
-                zaar
-                  ? isActive ? 'text-red-500' : 'text-gray-500 dark:text-gray-400'
-                  : isActive ? 'text-brand-500' : 'text-gray-500 dark:text-gray-400'
+                zaar ? isActive ? 'text-red-500' : 'text-gray-500 dark:text-gray-400'
+                     : isActive ? 'text-brand-500' : 'text-gray-500 dark:text-gray-400'
               )}
             >
               {({ isActive }) => (
                 <>
                   <div className="relative">
-                    {zaar
-                      ? <span style={{ fontSize: 23, lineHeight: 1 }}>🔥</span>
-                      : <Icon size={23} strokeWidth={isActive ? 2.5 : 2} />
-                    }
+                    {zaar ? <span style={{ fontSize: 23, lineHeight: 1 }}>🔥</span> : <Icon size={23} strokeWidth={isActive ? 2.5 : 2} />}
                     {badge === 'msg' && msgCount > 0 && (
                       <span className="absolute -top-1.5 -right-2 min-w-[16px] h-[16px] bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center px-0.5">
                         {msgCount > 9 ? '9+' : msgCount}
@@ -554,12 +519,7 @@ export default function Layout() {
               )}
             </NavLink>
           ))}
-
-          {/* Centre create button */}
-          <button
-            onClick={() => setCreateOpen(true)}
-            className="flex flex-col items-center justify-center flex-1 py-2 px-1 gap-0.5"
-          >
+          <button onClick={() => setCreateOpen(true)} className="flex flex-col items-center justify-center flex-1 py-2 px-1 gap-0.5">
             <div className="w-12 h-12 rounded-2xl gradient-brand flex items-center justify-center -mt-7 shadow-glow ring-4 ring-white dark:ring-surface-900">
               <span className="text-white text-2xl leading-none font-bold">+</span>
             </div>
@@ -570,7 +530,6 @@ export default function Layout() {
 
       {createOpen && <CreatePostModal onClose={() => setCreateOpen(false)} />}
 
-      {/* Global call overlay */}
       <CallScreen
         callState={call.callState}
         callType={call.callType}
