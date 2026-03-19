@@ -6,6 +6,15 @@ import { Toaster } from 'react-hot-toast'
 import App from './App'
 import './index.css'
 
+// ── Capture install prompt ASAP — before React mounts ────────────────────────
+// beforeinstallprompt fires early; if Layout hasn't mounted yet it would be lost.
+// We store it on window so Layout can always pick it up.
+window.__viiInstallPrompt = null
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault()
+  window.__viiInstallPrompt = e
+}, { once: false })
+
 // ── Error Boundary ────────────────────────────────────────────
 // Catches render errors anywhere in the tree so one broken component
 // doesn't crash the whole app. Shows a friendly recovery UI instead.
