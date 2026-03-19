@@ -1,0 +1,23 @@
+node_modules
+dist
+
+# Environment files — NEVER commit these (contains API keys & secrets)
+.env
+.env.*
+!.env.example
+
+# Build artifacts
+.vite
+*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor
+.vscode/
+.idea/
