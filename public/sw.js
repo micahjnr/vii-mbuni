@@ -96,10 +96,21 @@ self.addEventListener('fetch', e => {
   }
 
   // HTML — always network first
+  // If app is installed and request comes from browser (not standalone), redirect to ?source=pwa
+  // so the OS launch_handler focuses/opens the installed app window instead
   if (e.request.destination === 'document' || e.request.mode === 'navigate') {
-    e.respondWith(
-      fetch(e.request, { cache: 'no-store' }).catch(() => caches.match('/offline.html') || caches.match('/index.html'))
-    )
+    const reqUrl = new URL(e.request.url)
+    const isStandalone = reqUrl.searchParams.has('source') && reqUrl.searchParams.get('source') === 'pwa'
+    if (!isStandalone) {
+      // Let the page's inline script handle the redirect after checking localStorage
+      e.respondWith(
+        fetch(e.request, { cache: 'no-store' }).catch(() => caches.match('/offline.html') || caches.match('/index.html'))
+      )
+    } else {
+      e.respondWith(
+        fetch(e.request, { cache: 'no-store' }).catch(() => caches.match('/offline.html') || caches.match('/index.html'))
+      )
+    }
     return
   }
 
@@ -231,8 +242,10 @@ self.addEventListener('notificationclick', e => {
           return openAndSignal(client, callMsg)
         }
       }
-      // No window open — open one, then it will read the pending call from DB on load
-      return self.clients.openWindow(target)
+      // No window open — open in installed app context
+      const appUrl = new URL(target, self.location.origin)
+      appUrl.searchParams.set('source', 'pwa')
+      return self.clients.openWindow(appUrl.toString())
     })
   )
 })
