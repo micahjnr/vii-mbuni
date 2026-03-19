@@ -30,8 +30,20 @@ export default function Events() {
 
   const rsvpMutation = useMutation({
     mutationFn: async ({ eventId, going }) => {
-      if (going) await sb.from('event_rsvps').delete().eq('event_id', eventId).eq('user_id', user.id)
-      else await sb.from('event_rsvps').insert({ event_id: eventId, user_id: user.id })
+      if (going) {
+        await sb.from('event_rsvps').delete().eq('event_id', eventId).eq('user_id', user.id)
+      } else {
+        await sb.from('event_rsvps').insert({ event_id: eventId, user_id: user.id })
+        // Notify event creator
+        const { data: ev } = await sb.from('events').select('creator_id, title').eq('id', eventId).single()
+        if (ev?.creator_id && ev.creator_id !== user.id) {
+          sb.from('notifications').insert({
+            user_id: ev.creator_id, actor_id: user.id,
+            type: 'event_rsvp', reference_id: eventId,
+            is_read: false, extra_data: { eventTitle: ev.title },
+          }).then(() => {}).catch(() => {})
+        }
+      }
     },
     onMutate: ({ eventId, going }) => {
       // Optimistic update — toggle immediately without waiting for DB
