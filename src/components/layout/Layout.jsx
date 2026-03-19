@@ -57,7 +57,7 @@ export default function Layout() {
   const [showInstallBanner, setShowInstallBanner] = useState(false)
 
   // ── PWA Install prompt ────────────────────────────────────────────────────
-  const [installPrompt, setInstallPrompt] = useState(null)
+  const [installPrompt, setInstallPrompt] = useState(() => window.__viiInstallPrompt || null)
   const [isInstalled, setIsInstalled] = useState(false)
   const [showIOSHint, setShowIOSHint] = useState(false)
 
@@ -66,12 +66,19 @@ export default function Layout() {
       setIsInstalled(true)
       return
     }
-    const handler = (e) => { e.preventDefault(); setInstallPrompt(e) }
+    // Pick up prompt if it already fired before this component mounted
+    if (window.__viiInstallPrompt) setInstallPrompt(window.__viiInstallPrompt)
+
+    const handler = (e) => {
+      e.preventDefault()
+      window.__viiInstallPrompt = e   // store globally so it's never lost
+      setInstallPrompt(e)
+    }
     window.addEventListener('beforeinstallprompt', handler)
     window.addEventListener('appinstalled', () => {
       setIsInstalled(true)
       setInstallPrompt(null)
-      // Immediately relaunch into the installed app (standalone mode)
+      window.__viiInstallPrompt = null
       try { localStorage.setItem('vii-install-date', Date.now()) } catch (_) {}
       const url = new URL(window.location.href)
       url.searchParams.set('source', 'pwa')
@@ -82,15 +89,27 @@ export default function Layout() {
 
   const handleInstall = async () => {
     const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent)
-    if (installPrompt) {
+    const prompt = installPrompt || window.__viiInstallPrompt
+    if (prompt) {
       // Native one-tap install — browser handles everything
-      await installPrompt.prompt()
-      const { outcome } = await installPrompt.userChoice
-      if (outcome === 'accepted') { setInstallPrompt(null); setIsInstalled(true) }
+      try {
+        await prompt.prompt()
+        const { outcome } = await prompt.userChoice
+        if (outcome === 'accepted') {
+          setInstallPrompt(null)
+          window.__viiInstallPrompt = null
+          setIsInstalled(true)
+        }
+      } catch (_) {
+        // Prompt already used or dismissed — show banner fallback
+        setShowInstallBanner(true)
+      }
     } else if (isIOS) {
       setShowIOSHint(true)
+    } else {
+      // No native prompt yet (browser hasn't decided eligibility) — show banner with instructions
+      setShowInstallBanner(true)
     }
-    // All other browsers: do nothing — button stays visible but silent
   }
 
   // ── Draggable floating theme toggle ──────────────────────────────────────
