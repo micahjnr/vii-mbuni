@@ -7,7 +7,6 @@ import PermissionOnboarding from '@/components/ui/PermissionOnboarding'
 import PageLoader from '@/components/ui/PageLoader'
 import toast from 'react-hot-toast'
 import { useDailyStreak } from '@/hooks/useDailyStreak'
-import InstallBanner from '@/components/ui/InstallBanner'
 
 const Home        = lazy(() => import('@/pages/Home'))
 const Explore     = lazy(() => import('@/pages/Explore'))
@@ -336,7 +335,6 @@ export default function App() {
       {showPermOnboarding && (
         <PermissionOnboarding onDone={() => setShowPermOnboarding(false)} />
       )}
-      <InstallBanner />
     </Suspense>
   )
 }
