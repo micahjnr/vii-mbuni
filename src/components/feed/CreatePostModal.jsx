@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Image, Hash, X, Sparkles, Loader2, Plus, Trash2, SmilePlus, Globe, Users, Lock, RefreshCw, Check, Video, Music } from 'lucide-react'
+import { Image, Hash, X, Sparkles, Loader2, Plus, Trash2, SmilePlus, Globe, Users, Lock, RefreshCw, Check, Video } from 'lucide-react'
 import { useAuthStore } from '@/store'
 import sb from '@/lib/supabase'
 import Avatar from '@/components/ui/Avatar'
@@ -30,19 +30,6 @@ const AUDIENCE_OPTIONS = [
   { value: 'private', icon: Lock,   label: 'Only me' },
 ]
 
-// Format seconds to mm:ss
-function fmtDuration(secs) {
-  const m = Math.floor(secs / 60)
-  const s = Math.round(secs % 60)
-  return `${m}:${String(s).padStart(2, '0')}`
-}
-
-// Format bytes to human readable
-function fmtSize(bytes) {
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
-
 export default function CreatePostModal({ onClose, quotedPost = null }) {
   const { user, profile } = useAuthStore()
   const qc = useQueryClient()
@@ -58,16 +45,6 @@ export default function CreatePostModal({ onClose, quotedPost = null }) {
   const [videoProgress, setVideoProgress]     = useState(0)
   const [videoMeta, setVideoMeta]             = useState(null)
   const [alsoPostToReels, setAlsoPostToReels] = useState(false)
-
-  // ── Audio state ───────────────────────────────────────────────────────────
-  const [audioFile, setAudioFile]         = useState(null)
-  const [audioName, setAudioName]         = useState('')
-  const [audioDuration, setAudioDuration] = useState(null)
-  const [audioSize, setAudioSize]         = useState(null)
-  const [audioUploading, setAudioUploading] = useState(false)
-  const [audioUploadProgress, setAudioUploadProgress] = useState(0)
-  const [audioUrl, setAudioUrl]           = useState(null) // final uploaded URL
-  const audioRef = useRef()
 
   const [audience, setAudience]         = useState('public')
   const [mood, setMood]                 = useState(null)
@@ -140,101 +117,6 @@ export default function CreatePostModal({ onClose, quotedPost = null }) {
       setVideoProcessing(false)
       setVideoProgress(0)
     }
-  }
-
-  // ── Audio handler ─────────────────────────────────────────────────────────
-  const handleAudio = async (e) => {
-    const file = e.target.files[0]
-    if (!file) return
-
-    const maxMB = 50
-    if (file.size > maxMB * 1024 * 1024) {
-      toast.error(`Audio file too large. Max ${maxMB} MB.`)
-      return
-    }
-
-    clearAudio()
-    setAudioFile(file)
-    setAudioName(file.name)
-    setAudioSize(file.size)
-
-    // Get audio duration
-    const url = URL.createObjectURL(file)
-    const audio = new Audio(url)
-    audio.addEventListener('loadedmetadata', () => {
-      setAudioDuration(audio.duration)
-      URL.revokeObjectURL(url)
-    })
-    audio.addEventListener('error', () => URL.revokeObjectURL(url))
-
-    // Upload immediately with progress tracking using XMLHttpRequest
-    await uploadAudio(file)
-  }
-
-  const uploadAudio = async (file) => {
-    setAudioUploading(true)
-    setAudioUploadProgress(0)
-
-    try {
-      const ext = file.name.split('.').pop() || 'mp3'
-      const path = `posts/${user.id}/${Date.now()}.${ext}`
-
-      // Use XMLHttpRequest for real upload progress
-      const {
-        data: { session },
-      } = await sb.auth.getSession()
-
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
-      const uploadUrl = `${supabaseUrl}/storage/v1/object/audio/${path}`
-
-      await new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest()
-        xhr.open('POST', uploadUrl)
-        xhr.setRequestHeader('Authorization', `Bearer ${session?.access_token || anonKey}`)
-        xhr.setRequestHeader('x-upsert', 'false')
-        xhr.setRequestHeader('Content-Type', file.type || 'audio/mpeg')
-
-        xhr.upload.addEventListener('progress', (event) => {
-          if (event.lengthComputable) {
-            const pct = Math.round((event.loaded / event.total) * 100)
-            setAudioUploadProgress(pct)
-          }
-        })
-
-        xhr.addEventListener('load', () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            resolve()
-          } else {
-            reject(new Error(`Upload failed: ${xhr.statusText}`))
-          }
-        })
-
-        xhr.addEventListener('error', () => reject(new Error('Network error during audio upload')))
-        xhr.send(file)
-      })
-
-      // Get public URL
-      const { data: urlData } = sb.storage.from('audio').getPublicUrl(path)
-      setAudioUrl(urlData.publicUrl)
-      setAudioUploadProgress(100)
-      toast.success('Audio ready! 🎵')
-    } catch (err) {
-      toast.error(`Audio upload failed: ${err.message}`)
-      clearAudio()
-    } finally {
-      setAudioUploading(false)
-    }
-  }
-
-  const clearAudio = () => {
-    setAudioFile(null)
-    setAudioName('')
-    setAudioDuration(null)
-    setAudioSize(null)
-    setAudioUploading(false)
-    setAudioUploadProgress(0)
-    setAudioUrl(null)
   }
 
   const clearVideo = () => {
@@ -385,7 +267,6 @@ export default function CreatePostModal({ onClose, quotedPost = null }) {
         videoUrl = urlData.publicUrl
       }
 
-      // audioUrl is already uploaded, just use it directly
       const hashtags = extractHashtags(content)
 
       let pollData = null
@@ -400,7 +281,7 @@ export default function CreatePostModal({ onClose, quotedPost = null }) {
         content: content.trim(),
         image_url: imageUrl,
         video_url: videoUrl,
-        audio_url: audioUrl || null,
+        audio_url: null,
         audience,
         mood: mood || null,
         hashtags: hashtags.length ? hashtags : null,
@@ -440,7 +321,6 @@ export default function CreatePostModal({ onClose, quotedPost = null }) {
     onSuccess: () => {
       localStorage.removeItem(draftKey)
       clearVideo()
-      clearAudio()
       qc.invalidateQueries({ queryKey: ['feed'], refetchType: 'all' })
       qc.invalidateQueries({ queryKey: ['profile-videos'] })
       if (alsoPostToReels) qc.invalidateQueries({ queryKey: ['reels'] })
@@ -450,7 +330,7 @@ export default function CreatePostModal({ onClose, quotedPost = null }) {
     onError: (e) => toast.error(e.message),
   })
 
-  const hasContent = content.trim() || imageFile || videoFile || audioFile
+  const hasContent = content.trim() || imageFile || videoFile
 
   return (
     <Modal title={quotedPost ? 'Quote Post' : 'Create Post'} onClose={onClose}>
@@ -598,76 +478,6 @@ export default function CreatePostModal({ onClose, quotedPost = null }) {
           </div>
         )}
 
-        {/* ── Audio upload card ─────────────────────────────────────── */}
-        {audioFile && (
-          <div className={clsx(
-            'rounded-2xl border p-4 space-y-3 transition-all',
-            audioUploading
-              ? 'bg-purple-50 dark:bg-purple-500/10 border-purple-200 dark:border-purple-500/30'
-              : audioUrl
-                ? 'bg-green-50 dark:bg-green-500/10 border-green-200 dark:border-green-500/30'
-                : 'bg-surface-100 dark:bg-white/5 border-surface-200 dark:border-white/10'
-          )}>
-            {/* Header row */}
-            <div className="flex items-center gap-3">
-              <div className={clsx(
-                'w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0',
-                audioUploading ? 'bg-purple-100 dark:bg-purple-500/20' : audioUrl ? 'bg-green-100 dark:bg-green-500/20' : 'bg-surface-200 dark:bg-white/10'
-              )}>
-                {audioUploading
-                  ? <Loader2 size={20} className="animate-spin text-purple-500" />
-                  : audioUrl
-                    ? <span className="text-lg">✅</span>
-                    : <Music size={20} className="text-gray-400" />
-                }
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-semibold text-gray-900 dark:text-white truncate">{audioName}</div>
-                <div className="text-xs text-gray-400 flex items-center gap-2 mt-0.5">
-                  {audioSize && <span>{fmtSize(audioSize)}</span>}
-                  {audioDuration && <span>• {fmtDuration(audioDuration)}</span>}
-                  {audioUploading && <span className="text-purple-500 font-semibold">• Uploading…</span>}
-                  {audioUrl && !audioUploading && <span className="text-green-500 font-semibold">• Ready</span>}
-                </div>
-              </div>
-              {!audioUploading && (
-                <button onClick={clearAudio}
-                  className="w-7 h-7 bg-black/10 dark:bg-white/10 rounded-full flex items-center justify-center text-gray-500 hover:bg-red-100 hover:text-red-500 transition-colors flex-shrink-0">
-                  <X size={14} />
-                </button>
-              )}
-            </div>
-
-            {/* Progress bar — shown while uploading */}
-            {audioUploading && (
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-purple-600 dark:text-purple-400">Uploading audio…</span>
-                  <span className="text-xs font-bold text-purple-600 dark:text-purple-400">{audioUploadProgress}%</span>
-                </div>
-                <div className="w-full h-2 bg-purple-100 dark:bg-purple-500/20 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-purple-400 to-purple-600 rounded-full transition-all duration-300 ease-out"
-                    style={{ width: `${audioUploadProgress}%` }}
-                  />
-                </div>
-                <div className="text-[10px] text-purple-400 text-center">
-                  {audioUploadProgress < 20 ? '🎵 Starting upload…'
-                    : audioUploadProgress < 50 ? '📡 Sending audio file…'
-                    : audioUploadProgress < 80 ? '⚡ Almost there…'
-                    : audioUploadProgress < 100 ? '🏁 Finishing up…'
-                    : '✅ Done!'}
-                </div>
-              </div>
-            )}
-
-            {/* Audio player — shown when upload is done */}
-            {audioUrl && !audioUploading && (
-              <audio controls src={audioUrl} className="w-full h-8 rounded-lg" style={{ accentColor: '#8b5cf6' }} />
-            )}
-          </div>
-        )}
-
         {/* Also post to Reels */}
         {videoFile && !videoProcessing && (
           <label className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-purple-50 dark:bg-purple-500/10 border border-purple-200 dark:border-purple-500/20 cursor-pointer hover:bg-purple-100 dark:hover:bg-purple-500/20 transition-colors">
@@ -767,12 +577,6 @@ export default function CreatePostModal({ onClose, quotedPost = null }) {
                 {videoProcessing ? <Loader2 size={16} className="animate-spin" /> : <Video size={16} />} Video
               </button>
               <input ref={videoRef} type="file" accept="video/*" className="hidden" onChange={handleVideo} />
-
-              {/* Audio button */}
-              <button onClick={() => audioRef.current?.click()} disabled={audioUploading} className="btn-ghost text-xs gap-1.5 text-green-500 hover:text-green-600 disabled:opacity-40">
-                {audioUploading ? <Loader2 size={16} className="animate-spin" /> : <Music size={16} />} Audio
-              </button>
-              <input ref={audioRef} type="file" accept="audio/*" className="hidden" onChange={handleAudio} />
             </>
           )}
 
@@ -800,19 +604,16 @@ export default function CreatePostModal({ onClose, quotedPost = null }) {
       <div className="px-5 pb-5 pt-3 border-t border-surface-100 dark:border-white/10 flex-shrink-0">
         <button
           onClick={() => postMutation.mutate()}
-          disabled={(!content.trim() && !imageFile && !videoFile && !audioFile && tab !== 'poll') || postMutation.isPending || videoProcessing || audioUploading}
+          disabled={(!content.trim() && !imageFile && !videoFile && tab !== 'poll') || postMutation.isPending || videoProcessing}
           className="btn-primary w-full py-2.5"
         >
           {videoProcessing
             ? <span className="flex items-center gap-2"><Loader2 size={16} className="animate-spin" /> Processing video…</span>
-            : audioUploading
-              ? <span className="flex items-center gap-2"><Loader2 size={16} className="animate-spin" /> Uploading audio… {audioUploadProgress}%</span>
-              : postMutation.isPending
-                ? <span className="flex items-center gap-2"><Loader2 size={16} className="animate-spin" /> {videoFile ? 'Uploading video…' : 'Publishing...'}</span>
-                : tab === 'poll' ? '📊 Post Poll'
-                : videoFile ? (alsoPostToReels ? '🎬 Post to Feed + Reels' : '🎬 Post Video')
-                : audioFile ? '🎵 Post with Audio'
-                : 'Post'
+            : postMutation.isPending
+              ? <span className="flex items-center gap-2"><Loader2 size={16} className="animate-spin" /> {videoFile ? 'Uploading video…' : 'Publishing...'}</span>
+              : tab === 'poll' ? '📊 Post Poll'
+              : videoFile ? (alsoPostToReels ? '🎬 Post to Feed + Reels' : '🎬 Post Video')
+              : 'Post'
           }
         </button>
       </div>
