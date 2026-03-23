@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Eye, EyeOff, Loader2, Phone, Mail } from 'lucide-react'
+import { Eye, EyeOff, Loader2, Phone } from 'lucide-react'
 import ViiMbuniLogo from '@/components/ui/ViiMbuniLogo'
 import sb from '@/lib/supabase'
 import toast from 'react-hot-toast'
@@ -18,22 +18,31 @@ const inputClass = [
 const isValidPhone = (p) => p.replace(/\D/g, '').length >= 7
 
 // Build a placeholder email from phone so Supabase Auth (which requires email)
-// can still create the account without the user needing a real email address.
+// can still create the account. Email can be added later in Settings.
 const phonePlaceholderEmail = (phone) =>
   `${phone.replace(/\D/g, '')}@vii-mbuni.app`
 
+const EMPTY_FORM = { fullName: '', username: '', phone: '', password: '', confirmPassword: '' }
+
 export default function Register() {
-  const [form, setForm]       = useState({ fullName: '', username: '', phone: '', email: '', password: '', confirmPassword: '' })
+  const [form, setForm]       = useState(EMPTY_FORM)
   const [showPw, setShowPw]   = useState(false)
   const [showCpw, setShowCpw] = useState(false)
   const [loading, setLoading] = useState(false)
   const navigate              = useNavigate()
 
+  // Clear all fields every time the registration page is mounted
+  useEffect(() => {
+    setForm(EMPTY_FORM)
+    setShowPw(false)
+    setShowCpw(false)
+  }, [])
+
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    const { fullName, username, phone, email, password, confirmPassword } = form
+    const { fullName, username, phone, password, confirmPassword } = form
 
     // ── Validation ──────────────────────────────────────────────
     if (!fullName.trim())             return toast.error('Please enter your full name')
@@ -44,9 +53,8 @@ export default function Register() {
     if (password.length < 6)          return toast.error('Password must be at least 6 characters')
     if (password !== confirmPassword) return toast.error('Passwords do not match — please check and try again')
 
-    // Email is optional — use placeholder if not provided
-    const authEmail    = email.trim() ? email.trim() : phonePlaceholderEmail(phone)
-    const hasRealEmail = !!email.trim()
+    // Always use phone placeholder — user can add a real email later in Settings
+    const authEmail = phonePlaceholderEmail(phone)
 
     setLoading(true)
 
@@ -58,7 +66,7 @@ export default function Register() {
           full_name:      fullName.trim(),
           username:       cleanUser(username),
           phone_number:   phone.trim(),
-          has_real_email: hasRealEmail,
+          has_real_email: false,
         },
       },
     })
@@ -74,11 +82,12 @@ export default function Register() {
     // Upsert profile row (handles trigger race condition)
     if (data?.user) {
       await sb.from('profiles').upsert({
-        id:           data.user.id,
-        full_name:    fullName.trim(),
-        username:     cleanUser(username),
-        email:        hasRealEmail ? email.trim() : null,
-        phone_number: phone.trim(),
+        id:             data.user.id,
+        full_name:      fullName.trim(),
+        username:       cleanUser(username),
+        email:          null,          // no email at registration — added later in Settings
+        phone_number:   phone.trim(),
+        has_real_email: false,
       }, { onConflict: 'id' })
     }
 
@@ -107,13 +116,27 @@ export default function Register() {
             {/* Full Name */}
             <div>
               <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">Full Name</label>
-              <input type="text" value={form.fullName} onChange={set('fullName')} className={inputClass} placeholder="e.g. Amina Yusuf" />
+              <input
+                type="text"
+                value={form.fullName}
+                onChange={set('fullName')}
+                className={inputClass}
+                placeholder="e.g. Amina Yusuf"
+                autoComplete="off"
+              />
             </div>
 
             {/* Username */}
             <div>
               <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">Username</label>
-              <input type="text" value={form.username} onChange={set('username')} className={inputClass} placeholder="e.g. amina_y" />
+              <input
+                type="text"
+                value={form.username}
+                onChange={set('username')}
+                className={inputClass}
+                placeholder="e.g. amina_y"
+                autoComplete="off"
+              />
             </div>
 
             {/* Phone — required */}
@@ -129,24 +152,9 @@ export default function Register() {
                 className={inputClass}
                 placeholder="e.g. 0712 345 678"
                 inputMode="tel"
+                autoComplete="off"
               />
               <p className="text-xs text-gray-500 mt-1">No SMS verification needed — just enter and go</p>
-            </div>
-
-            {/* Email — optional */}
-            <div>
-              <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-                <Mail size={12} />
-                Email Address <span className="text-gray-500 font-normal normal-case ml-0.5">(optional)</span>
-              </label>
-              <input
-                type="email"
-                value={form.email}
-                onChange={set('email')}
-                className={inputClass}
-                placeholder="you@example.com — add later if you don't have one"
-              />
-              <p className="text-xs text-gray-500 mt-1">You can add or verify your email any time in Settings</p>
             </div>
 
             {/* Password */}
@@ -159,6 +167,7 @@ export default function Register() {
                   onChange={set('password')}
                   className={inputClass + ' pr-10'}
                   placeholder="At least 6 characters"
+                  autoComplete="new-password"
                 />
                 <button type="button" onClick={() => setShowPw(v => !v)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors">
@@ -184,6 +193,7 @@ export default function Register() {
                         : '',
                   ].join(' ')}
                   placeholder="Re-enter your password"
+                  autoComplete="new-password"
                 />
                 <button type="button" onClick={() => setShowCpw(v => !v)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors">
