@@ -470,7 +470,6 @@ export default function Chat() {
 
   useEffect(() => {
     if (!user?.id || !userId) return
-    if (document.visibilityState !== 'visible') return
     // Optimistically clear the unread badge immediately so it feels instant
     sb.from('messages')
       .select('id', { count: 'exact', head: true })
