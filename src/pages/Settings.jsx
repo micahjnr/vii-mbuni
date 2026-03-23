@@ -8,7 +8,7 @@ import sb from '@/lib/supabase'
 import {
   Bell, BellOff, Moon, Sun, Lock, Trash2, LogOut,
   Shield, Eye, EyeOff, ChevronRight, User, Palette,
-  Smartphone, Info, Mail, Check, X, UserX
+  Smartphone, Info, Mail, Check, X, UserX, Phone
 } from 'lucide-react'
 import Avatar from '@/components/ui/Avatar'
 import toast from 'react-hot-toast'
@@ -125,9 +125,26 @@ function PermissionRow({ name }) {
 }
 
 export default function Settings() {
-  const { user, profile, signOut } = useAuthStore()
+  const { user, profile, signOut, fetchProfile } = useAuthStore()
   const qc = useQueryClient()
   const [showBlocked, setShowBlocked] = useState(false)
+  const [showAddEmail, setShowAddEmail] = useState(false)
+  const [newEmail, setNewEmail] = useState('')
+  const [savingEmail, setSavingEmail] = useState(false)
+
+  const handleSaveEmail = async () => {
+    if (!newEmail.trim()) return toast.error('Please enter an email address')
+    setSavingEmail(true)
+    const { error } = await sb.from('profiles').update({ email: newEmail.trim(), has_real_email: true }).eq('id', user.id)
+    setSavingEmail(false)
+    if (error) return toast.error(error.message)
+    await fetchProfile(user.id)
+    toast.success('Email saved! You can verify it any time.')
+    setShowAddEmail(false)
+    setNewEmail('')
+  }
+
+  const isPhoneUser = !profile?.has_real_email
 
   const { data: blockedUsers = [] } = useQuery({
     queryKey: ['blocked-users', user?.id],
@@ -223,12 +240,55 @@ export default function Settings() {
           sublabel="Name, bio, avatar, website"
           onClick={() => navigate('/profile?edit=1')}
         />
+        {/* Email row — different treatment for phone-registered users */}
+        {isPhoneUser ? (
+          <div>
+            <div className="flex items-center gap-3 px-4 py-3.5 bg-amber-50 dark:bg-amber-500/10 border-b border-amber-100 dark:border-amber-500/20">
+              <div className="w-8 h-8 rounded-xl bg-amber-100 dark:bg-amber-500/20 flex items-center justify-center flex-shrink-0">
+                <Mail size={16} className="text-amber-600 dark:text-amber-400" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-semibold text-amber-800 dark:text-amber-300">Add an email address</div>
+                <div className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">Optional — helps you reset your password later</div>
+              </div>
+              <button onClick={() => setShowAddEmail(v => !v)}
+                className="text-xs font-semibold text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-500/20 px-3 py-1.5 rounded-lg hover:bg-amber-200 dark:hover:bg-amber-500/30 transition-colors flex-shrink-0">
+                {showAddEmail ? 'Cancel' : 'Add'}
+              </button>
+            </div>
+            {showAddEmail && (
+              <div className="px-4 py-4 space-y-3 bg-surface-50 dark:bg-white/5 border-b border-surface-100 dark:border-white/5">
+                <input
+                  type="email"
+                  value={newEmail}
+                  onChange={e => setNewEmail(e.target.value)}
+                  placeholder="your@email.com"
+                  className="w-full px-3 py-2.5 rounded-xl text-sm bg-white dark:bg-white/10 border border-surface-200 dark:border-white/20 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-400 focus:border-brand-400 transition-all"
+                />
+                <p className="text-xs text-gray-400">Your email will be saved but not verified yet — you can verify it later.</p>
+                <button onClick={handleSaveEmail} disabled={savingEmail}
+                  className="w-full py-2.5 rounded-xl bg-brand-500 text-white text-sm font-semibold hover:bg-brand-400 transition-colors disabled:opacity-60 flex items-center justify-center gap-2">
+                  {savingEmail ? <span className="animate-spin">⏳</span> : 'Save email'}
+                </button>
+              </div>
+            )}
+          </div>
+        ) : (
+          <Row
+            icon={Mail}
+            label="Email address"
+            sublabel={profile?.email || user?.email || 'Not set'}
+            onClick={null}
+            right={<span className="text-xs text-gray-400">{profile?.email || user?.email}</span>}
+          />
+        )}
+        {/* Phone number row */}
         <Row
-          icon={Mail}
-          label="Email address"
-          sublabel={user?.email || 'Not set'}
+          icon={Phone}
+          label="Phone number"
+          sublabel={profile?.phone_number || 'Not added'}
           onClick={null}
-          right={<span className="text-xs text-gray-400">{user?.email}</span>}
+          right={<span className="text-xs text-gray-400">{profile?.phone_number || '—'}</span>}
         />
         <Row
           icon={Lock}
