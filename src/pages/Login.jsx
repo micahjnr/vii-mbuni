@@ -5,30 +5,54 @@ import ViiMbuniLogo from '@/components/ui/ViiMbuniLogo'
 import sb from '@/lib/supabase'
 import toast from 'react-hot-toast'
 
+// Mirror the same placeholder logic used at registration
+const phonePlaceholderEmail = (phone) =>
+  `${phone.replace(/\D/g, '')}@vii-mbuni.app`
+
+const isLikelyPhone = (val) => /^[0-9\s\-+()]{7,}$/.test(val.trim())
+
 export default function Login() {
-  const [email, setEmail]       = useState('')
-  const [password, setPassword] = useState('')
-  const [showPw, setShowPw]     = useState(false)
-  const [loading, setLoading]   = useState(false)
+  const [identifier, setIdentifier] = useState('')   // email OR phone
+  const [password, setPassword]     = useState('')
+  const [showPw, setShowPw]         = useState(false)
+  const [loading, setLoading]       = useState(false)
   const [forgotMode, setForgotMode] = useState(false)
   const [resetSent, setResetSent]   = useState(false)
   const navigate = useNavigate()
 
   const handleLogin = async (e) => {
     e.preventDefault()
-    if (!email || !password) return toast.error('Fill in all fields')
+    if (!identifier || !password) return toast.error('Fill in all fields')
+
+    // Determine the email to use for Supabase Auth
+    const email = isLikelyPhone(identifier)
+      ? phonePlaceholderEmail(identifier)
+      : identifier.trim()
+
     setLoading(true)
     const { error } = await sb.auth.signInWithPassword({ email, password })
     setLoading(false)
-    if (error) toast.error(error.message)
-    else { toast.success('Welcome back! 👋'); navigate('/') }
+
+    if (error) {
+      // Give a friendlier message when phone not found
+      if (error.message?.toLowerCase().includes('invalid login')) {
+        return toast.error('Phone number or password is incorrect')
+      }
+      toast.error(error.message)
+    } else {
+      toast.success('Welcome back! 👋')
+      navigate('/')
+    }
   }
 
   const handleForgot = async (e) => {
     e.preventDefault()
-    if (!email) return toast.error('Enter your email address')
+    if (!identifier) return toast.error('Enter your email address')
+    if (isLikelyPhone(identifier)) {
+      return toast.error('Password reset requires an email address. Please enter your email, or contact support.')
+    }
     setLoading(true)
-    const { error } = await sb.auth.resetPasswordForEmail(email, {
+    const { error } = await sb.auth.resetPasswordForEmail(identifier.trim(), {
       redirectTo: `${window.location.origin}/reset-password`,
     })
     setLoading(false)
@@ -39,7 +63,7 @@ export default function Login() {
   const inputClass = [
     'w-full px-4 py-3 rounded-xl text-sm font-medium',
     'bg-white/10 border border-white/20',
-    'text-white caret-white',
+    'text-white caret-white placeholder-gray-500',
     'focus:outline-none focus:ring-2 focus:ring-brand-400 focus:border-brand-400',
     'transition-all duration-200',
   ].join(' ')
@@ -62,7 +86,7 @@ export default function Login() {
               <div className="text-center space-y-4">
                 <div className="text-4xl">📧</div>
                 <h2 className="text-xl font-bold text-white">Check your email</h2>
-                <p className="text-gray-400 text-sm">We sent a password reset link to <span className="text-brand-400 font-semibold">{email}</span></p>
+                <p className="text-gray-400 text-sm">We sent a password reset link to <span className="text-brand-400 font-semibold">{identifier}</span></p>
                 <button onClick={() => { setForgotMode(false); setResetSent(false) }}
                   className="btn-primary w-full py-3">Back to Sign in</button>
               </div>
@@ -77,7 +101,7 @@ export default function Login() {
                 <form onSubmit={handleForgot} className="space-y-4">
                   <div>
                     <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">Email</label>
-                    <input type="email" value={email} onChange={e => setEmail(e.target.value)} className={inputClass} />
+                    <input type="email" value={identifier} onChange={e => setIdentifier(e.target.value)} className={inputClass} />
                   </div>
                   <button type="submit" disabled={loading} className="btn-primary w-full py-3">
                     {loading ? <Loader2 size={18} className="animate-spin" /> : 'Send reset link'}
@@ -90,12 +114,15 @@ export default function Login() {
               <h2 className="text-xl font-bold text-white mb-5">Sign in</h2>
               <form onSubmit={handleLogin} className="space-y-4">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">Email</label>
+                  <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">Phone Number or Email</label>
                   <input
-                    type="email"
-                    value={email}
-                    onChange={e => setEmail(e.target.value)}
+                    type="text"
+                    value={identifier}
+                    onChange={e => setIdentifier(e.target.value)}
                     className={inputClass}
+                    placeholder="0712 345 678 or email@example.com"
+                    inputMode="text"
+                    autoComplete="username"
                   />
                 </div>
 
