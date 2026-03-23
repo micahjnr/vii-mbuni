@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { Search, X, Edit3, CheckCheck, Check, Mic, Image } from 'lucide-react'
 import { useState, useEffect } from 'react'
-import { useAuthStore, useUIStore } from '@/store'
+import { useAuthStore, useUIStore, useNotifStore } from '@/store'
 import sb from '@/lib/supabase'
 import Avatar from '@/components/ui/Avatar'
 import { Skeleton } from '@/components/ui/PageLoader'
@@ -226,6 +226,7 @@ function ActiveStrip({ convos, onlineUsers, onOpen }) {
 export default function Messages() {
   const { user } = useAuthStore()
   const { onlineUsers } = useUIStore()
+  const { setMsgCount } = useNotifStore()
   const navigate = useNavigate()
   const qc = useQueryClient()
   const [search, setSearch] = useState('')
@@ -281,6 +282,12 @@ export default function Messages() {
   })
 
   const unreadCount = convos.filter(c => c.unreadCount > 0).length
+
+  // Keep the nav badge in sync with what the conversation list actually shows.
+  // This catches stale badge counts (e.g. messages marked read on another device).
+  useEffect(() => {
+    setMsgCount(unreadCount)
+  }, [unreadCount])
 
   const filtered = convos
     .filter(({ other, unreadCount: uc }) => {
