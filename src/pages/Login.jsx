@@ -63,6 +63,9 @@ export default function Login() {
       for (const email of emails) {
         const { error } = await sb.auth.signInWithPassword({ email, password })
         if (!error) {
+          // Save phone to Supabase Auth Phone column if not already set
+          const e164Phone = '+234' + identifier.replace(/\D/g, '').replace(/^0/, '')
+          await sb.auth.updateUser({ phone: e164Phone })
           setLoading(false)
           toast.success('Welcome back! 👋')
           navigate('/')
