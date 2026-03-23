@@ -247,35 +247,28 @@ export default function Messages() {
   const { data: convos = [], isLoading, isError } = useQuery({
     queryKey: ['conversations', user?.id],
     queryFn: async () => {
-      const { data, error } = await sb
-        .from('messages')
-        .select(`
-          id, content, audio_url, image_url, created_at, is_read, sender_id, receiver_id,
-          sender:sender_id(id, username, full_name, avatar_url, last_active),
-          receiver:receiver_id(id, username, full_name, avatar_url, last_active)
-        `)
-        .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
-        .order('created_at', { ascending: false })
-        .limit(300)
-
-      if (error) {
-        if (error.code === '42703') {
-          const { data: fallback, error: e2 } = await sb
-            .from('messages')
-            .select(`
-              id, content, created_at, sender_id, receiver_id,
-              sender:sender_id(id, username, full_name, avatar_url),
-              receiver:receiver_id(id, username, full_name, avatar_url)
-            `)
-            .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
-            .order('created_at', { ascending: false })
-            .limit(300)
-          if (e2) throw e2
-          return buildConvos(fallback || [], user.id)
-        }
-        throw error
-      }
-      return buildConvos(data || [], user.id)
+      const { data, error } = await sb.rpc('get_conversations', { uid: user.id })
+      if (error) throw error
+      // Map RPC rows into the same shape buildConvos() used to produce
+      return (data || []).map(row => ({
+        other: {
+          id:          row.other_id,
+          username:    row.other_username,
+          full_name:   row.other_full_name,
+          avatar_url:  row.other_avatar_url,
+          last_active: row.other_last_active,
+        },
+        lastMsg: {
+          id:         row.last_msg_id,
+          content:    row.last_msg_content,
+          audio_url:  row.last_msg_audio,
+          image_url:  row.last_msg_image,
+          is_read:    row.last_msg_read,
+          sender_id:  row.last_msg_sender,
+          created_at: row.last_msg_at,
+        },
+        unreadCount: Number(row.unread_count),
+      }))
     },
     enabled: !!user,
     staleTime: 10_000,
