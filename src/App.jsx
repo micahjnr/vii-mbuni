@@ -4,6 +4,7 @@ import sb from '@/lib/supabase'
 import { useAuthStore, useUIStore, useNotifStore } from '@/store'
 import Layout from '@/components/layout/Layout'
 import PermissionOnboarding from '@/components/ui/PermissionOnboarding'
+import PhonePromptModal, { shouldShowPhonePrompt } from '@/components/ui/PhonePromptModal'
 import PageLoader from '@/components/ui/PageLoader'
 import toast from 'react-hot-toast'
 import { useDailyStreak } from '@/hooks/useDailyStreak'
@@ -74,7 +75,7 @@ export default function App() {
 
   // Permission onboarding — shown once on first launch after login
   const [showPermOnboarding, setShowPermOnboarding] = useState(false)
-  const { user: authUser } = useAuthStore()
+  const { user: authUser, profile: authProfile } = useAuthStore()
   useEffect(() => {
     if (!authUser) return
     try {
@@ -82,6 +83,17 @@ export default function App() {
       if (!done) setShowPermOnboarding(true)
     } catch {}
   }, [authUser])
+
+  // Phone number prompt — shown to existing users who don't have a phone number yet
+  const [showPhonePrompt, setShowPhonePrompt] = useState(false)
+  useEffect(() => {
+    if (!authUser || !authProfile) return
+    // Small delay so it doesn't pop up the instant the page loads
+    const t = setTimeout(() => {
+      if (shouldShowPhonePrompt(authProfile)) setShowPhonePrompt(true)
+    }, 2000)
+    return () => clearTimeout(t)
+  }, [authUser, authProfile])
 
   // Keep a ref to the active channels so we can clean them up properly
   // without recreating them on every auth state change (token refresh etc.)
@@ -343,6 +355,10 @@ export default function App() {
 
       {showPermOnboarding && (
         <PermissionOnboarding onDone={() => setShowPermOnboarding(false)} />
+      )}
+
+      {showPhonePrompt && (
+        <PhonePromptModal onClose={() => setShowPhonePrompt(false)} />
       )}
     </Suspense>
   )
