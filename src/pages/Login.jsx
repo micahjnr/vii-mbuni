@@ -11,6 +11,34 @@ const phonePlaceholderEmail = (phone) =>
 
 const isLikelyPhone = (val) => /^[0-9\s\-+()]{7,}$/.test(val.trim())
 
+/**
+ * Normalise a local phone number to the canonical form used at registration.
+ * Problem: a user may register with "+2349021775413" (digits → 2349021775413)
+ * but log in with "09021775413" (digits → 09021775413) — different emails.
+ *
+ * Strategy: try the raw digits first; if that fails, retry after stripping a
+ * leading "0" and prepending the country code (234 for Nigeria), and vice-versa.
+ */
+const COUNTRY_CODE = '234' // Nigeria — update if your user base is different
+
+const phoneEmailVariants = (rawPhone) => {
+  const digits = rawPhone.replace(/\D/g, '')
+  const variants = new Set()
+  variants.add(digits) // as typed
+
+  // "09021775413" → "2349021775413"
+  if (digits.startsWith('0')) {
+    variants.add(COUNTRY_CODE + digits.slice(1))
+  }
+
+  // "2349021775413" → "09021775413"
+  if (digits.startsWith(COUNTRY_CODE)) {
+    variants.add('0' + digits.slice(COUNTRY_CODE.length))
+  }
+
+  return [...variants].map(d => `${d}@vii-mbuni.app`)
+}
+
 export default function Login() {
   const [identifier, setIdentifier] = useState('')   // email OR phone
   const [password, setPassword]     = useState('')
@@ -24,20 +52,33 @@ export default function Login() {
     e.preventDefault()
     if (!identifier || !password) return toast.error('Fill in all fields')
 
-    // Determine the email to use for Supabase Auth
-    const email = isLikelyPhone(identifier)
-      ? phonePlaceholderEmail(identifier)
-      : identifier.trim()
-
     setLoading(true)
-    const { error } = await sb.auth.signInWithPassword({ email, password })
+
+    if (isLikelyPhone(identifier)) {
+      // Try every normalised variant of the phone number.
+      // Covers mismatches between local format (09021775413) and
+      // international format (2349021775413) used at registration.
+      const emails = phoneEmailVariants(identifier)
+
+      for (const email of emails) {
+        const { error } = await sb.auth.signInWithPassword({ email, password })
+        if (!error) {
+          setLoading(false)
+          toast.success('Welcome back! 👋')
+          navigate('/')
+          return
+        }
+      }
+
+      setLoading(false)
+      return toast.error('Phone number or password is incorrect')
+    }
+
+    // Email login — straightforward
+    const { error } = await sb.auth.signInWithPassword({ email: identifier.trim(), password })
     setLoading(false)
 
     if (error) {
-      // Give a friendlier message when phone not found
-      if (error.message?.toLowerCase().includes('invalid login')) {
-        return toast.error('Phone number or password is incorrect')
-      }
       toast.error(error.message)
     } else {
       toast.success('Welcome back! 👋')
