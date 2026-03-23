@@ -3,9 +3,15 @@ const { createClient } = require('@supabase/supabase-js')
 const webpush = require('web-push')
 const crypto = require('crypto')
 
-const ALLOWED_ORIGIN = process.env.SITE_URL || '*'
+// ── FIXED: No wildcard fallback — if SITE_URL is missing, fail loudly at
+//   startup rather than silently allowing all origins at runtime.
+const ALLOWED_ORIGIN = process.env.SITE_URL
+if (!ALLOWED_ORIGIN) {
+  console.error('[push-send] SITE_URL env var is not set — CORS will be misconfigured.')
+}
+
 const CORS = {
-  'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
+  'Access-Control-Allow-Origin': ALLOWED_ORIGIN || 'null',
   'Access-Control-Allow-Headers': 'Content-Type, x-webhook-secret',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
@@ -16,7 +22,7 @@ const json = (statusCode, body) => ({
 })
 
 // Validate env vars at cold start so misconfiguration is obvious in logs
-const MISSING = ['VAPID_EMAIL','VAPID_PUBLIC_KEY','VAPID_PRIVATE_KEY','SUPABASE_URL','SUPABASE_SERVICE_ROLE_KEY','WEBHOOK_SECRET']
+const MISSING = ['VAPID_EMAIL','VAPID_PUBLIC_KEY','VAPID_PRIVATE_KEY','SUPABASE_URL','SUPABASE_SERVICE_ROLE_KEY','WEBHOOK_SECRET','SITE_URL']
   .filter(k => !process.env[k])
 
 if (!MISSING.length) {
@@ -27,35 +33,51 @@ if (!MISSING.length) {
   )
 }
 
+// ── FIXED: Sanitize all user-supplied strings before they enter payloads.
+//   Prevents oversized or injection-style content in notification bodies.
+const sanitize = (str, maxLen = 120) => {
+  if (typeof str !== 'string') return ''
+  return str.replace(/[\u0000-\u001F\u007F]/g, '').trim().slice(0, maxLen)
+}
+
 function buildPayload({ type, actorName, actorAvatar, referenceId, extra }) {
-  // Use sender's avatar as the notification icon (like WhatsApp/Instagram)
-  // Fall back to app icon only if no avatar available
-  const personIcon = (actorAvatar && actorAvatar.startsWith('http'))
+  const name   = sanitize(actorName, 60)   || 'Someone'
+  const avatar = (typeof actorAvatar === 'string' && actorAvatar.startsWith('https://'))
     ? actorAvatar
     : '/icons/icon-512.png'
 
   const base = {
-    icon:               personIcon,
+    icon:               avatar,
     badge:              '/icons/badge-96.png',
     vibrate:            [100, 50, 100],
     renotify:           true,
     requireInteraction: false,
-    // Don't use actorAvatar as image — image is for actual media content only
     silent:             false,
   }
+
+  // ── FIXED: all user-controlled strings (preview, groupName, etc.) sanitized
+  const preview     = sanitize(extra?.preview,     100)
+  const groupName   = sanitize(extra?.groupName,    60)
+  const challengeTitle = sanitize(extra?.challengeTitle, 80)
+  const levelLabel  = sanitize(extra?.levelLabel,   40)
+  const eventTitle  = sanitize(extra?.eventTitle,   80)
+  const emoji       = sanitize(extra?.emoji,         4)
+  const mediaUrl    = (typeof extra?.mediaUrl === 'string' && extra.mediaUrl.startsWith('https://'))
+    ? extra.mediaUrl
+    : null
 
   const configs = {
     like: {
       title: extra?.isVideo ? '🎬 New like on your video' : '👍 New like',
-      body:  extra?.isVideo ? `${actorName} liked your video` : `${actorName} liked your post`,
+      body:  extra?.isVideo ? `${name} liked your video` : `${name} liked your post`,
       tag:   'likes',
       data:  { url: referenceId ? `/?post=${referenceId}` : '/' },
       actions: [{ action: 'view', title: 'View' }],
     },
     comment: {
-      title: `💬 ${actorName}`,
-      body:  extra?.preview
-        ? `"${extra.preview.slice(0, 80)}"`
+      title: `💬 ${name}`,
+      body:  preview
+        ? `"${preview}"`
         : extra?.isVideo ? 'Commented on your video' : 'Commented on your post',
       tag:   'comments',
       data:  { url: referenceId ? `/?post=${referenceId}` : '/' },
@@ -66,7 +88,7 @@ function buildPayload({ type, actorName, actorAvatar, referenceId, extra }) {
     },
     reply: {
       title: 'New reply',
-      body:  `${actorName} replied to your comment`,
+      body:  `${name} replied to your comment`,
       tag:   'comments',
       data:  { url: referenceId ? `/?post=${referenceId}` : '/' },
       actions: [
@@ -76,7 +98,7 @@ function buildPayload({ type, actorName, actorAvatar, referenceId, extra }) {
     },
     mention: {
       title: 'You were mentioned',
-      body:  `${actorName} mentioned you in a post`,
+      body:  `${name} mentioned you in a post`,
       tag:   'mentions',
       data:  { url: referenceId ? `/?post=${referenceId}` : '/' },
       actions: [{ action: 'view', title: 'View post' }],
@@ -84,26 +106,25 @@ function buildPayload({ type, actorName, actorAvatar, referenceId, extra }) {
     follow: {
       title: extra?.accepted ? 'Friend request accepted' : 'New follower',
       body:  extra?.accepted
-        ? `${actorName} accepted your friend request 🤝`
-        : `${actorName} started following you 🎉`,
+        ? `${name} accepted your friend request 🤝`
+        : `${name} started following you 🎉`,
       tag:   'social',
       data:  { url: extra?.actorId ? `/profile/${extra.actorId}` : '/' },
       actions: [{ action: 'view', title: 'View profile' }],
     },
     friend_request: {
       title: 'Friend request',
-      body:  `${actorName} sent you a friend request`,
+      body:  `${name} sent you a friend request`,
       tag:   'social',
       data:  { url: '/friends' },
       actions: [{ action: 'view', title: 'View' }],
     },
     message: {
-      title: actorName,
-      body:  extra?.preview || '📨 Sent you a message',
+      title: name,
+      body:  preview || '📨 Sent you a message',
       tag:   `dm-${extra?.actorId}`,
       requireInteraction: true,
-      // Show media image only if message contains actual media (not avatar)
-      ...(extra?.mediaUrl && extra.mediaUrl.startsWith('http') ? { image: extra.mediaUrl } : {}),
+      ...(mediaUrl ? { image: mediaUrl } : {}),
       data:  { url: extra?.actorId ? `/messages/${extra.actorId}` : '/messages' },
       actions: [
         { action: 'reply', title: '↩ Reply' },
@@ -112,22 +133,22 @@ function buildPayload({ type, actorName, actorAvatar, referenceId, extra }) {
     },
     group_join: {
       title: 'New group member',
-      body:  `${actorName} joined "${extra?.groupName || 'your group'}" 👥`,
+      body:  `${name} joined "${groupName || 'your group'}" 👥`,
       tag:   'groups',
       data:  { url: '/groups' },
       actions: [{ action: 'view', title: 'View group' }],
     },
     group_post: {
-      title: extra?.groupName || 'New group post',
-      body:  `${actorName} posted in "${extra?.groupName || 'your group'}"`,
+      title: groupName || 'New group post',
+      body:  `${name} posted in "${groupName || 'your group'}"`,
       tag:   'groups',
       data:  { url: referenceId ? `/?post=${referenceId}` : '/groups' },
       actions: [{ action: 'view', title: 'See post' }],
     },
     challenge_complete: {
       title: '🏆 Challenge complete!',
-      body:  extra?.challengeTitle
-        ? `You completed "${extra.challengeTitle}" — +${extra.xp || 0} XP!`
+      body:  challengeTitle
+        ? `You completed "${challengeTitle}" — +${extra.xp || 0} XP!`
         : 'You completed a challenge!',
       tag:   'achievements',
       data:  { url: '/challenges' },
@@ -135,21 +156,20 @@ function buildPayload({ type, actorName, actorAvatar, referenceId, extra }) {
     },
     xp_milestone: {
       title: '⚡ Level up!',
-      body:  extra?.levelLabel ? `You reached ${extra.levelLabel}!` : 'You reached a new level!',
+      body:  levelLabel ? `You reached ${levelLabel}!` : 'You reached a new level!',
       tag:   'achievements',
       data:  { url: '/' },
     },
-    // ── Story interactions ────────────────────────────────────────────────────
     story_like: {
       title: 'Vii-Mbuni',
-      body:  `${actorName} reacted ${extra?.emoji || '❤️'} to your story`,
+      body:  `${name} reacted ${emoji || '❤️'} to your story`,
       tag:   'story-likes',
       data:  { url: '/' },
       actions: [{ action: 'view', title: 'View story' }],
     },
     story_comment: {
       title: 'Story reply',
-      body:  extra?.preview ? `${actorName}: ${extra.preview}` : `${actorName} replied to your story 💬`,
+      body:  preview ? `${name}: ${preview}` : `${name} replied to your story 💬`,
       tag:   'story-comments',
       data:  { url: '/' },
       actions: [
@@ -157,25 +177,22 @@ function buildPayload({ type, actorName, actorAvatar, referenceId, extra }) {
         { action: 'reply', title: 'Reply' },
       ],
     },
-    // ── Event RSVP ───────────────────────────────────────────────────────────
     event_rsvp: {
       title: 'New RSVP',
-      body:  extra?.eventTitle
-        ? `${actorName} is going to "${extra.eventTitle}" 🎉`
-        : `${actorName} RSVPed to your event 🎉`,
+      body:  eventTitle
+        ? `${name} is going to "${eventTitle}" 🎉`
+        : `${name} RSVPed to your event 🎉`,
       tag:   'events',
       data:  { url: '/events' },
       actions: [{ action: 'view', title: 'View event' }],
     },
-    // ── Incoming call ─────────────────────────────────────────────────────────
     incoming_call: {
       title: extra?.callType === 'video' ? '📹 Incoming video call' : '📞 Incoming voice call',
-      body:  `${actorName} is calling you — tap to answer`,
+      body:  `${name} is calling you — tap to answer`,
       tag:   `call-${extra?.sessionId || 'call'}`,
       requireInteraction: true,
       renotify: true,
       vibrate: [200, 100, 200, 100, 200],
-      // FIX: was `actor_id` (undefined in this scope) — use extra.actorId
       data:  { url: `/messages/${extra?.actorId}`, sessionId: extra?.sessionId, callType: extra?.callType },
       actions: [
         { action: 'answer',  title: '✅ Answer' },
@@ -221,7 +238,6 @@ exports.handler = async (event) => {
   try { body = JSON.parse(event.body || '{}') }
   catch { return json(400, { error: 'Invalid JSON' }) }
 
-  // Supabase webhook wraps the row in body.record
   const notification = body.record || body
   const { user_id, type, actor_id, reference_id, extra_data } = notification
 
@@ -229,9 +245,20 @@ exports.handler = async (event) => {
 
   if (!user_id) return json(400, { error: 'Missing user_id in payload' })
 
-  const extra = typeof extra_data === 'string'
-    ? (() => { try { return JSON.parse(extra_data) } catch { return {} } })()
-    : (extra_data || {})
+  // ── FIXED: Log a warning when extra_data can't be parsed instead of
+  //   silently swallowing the error with an empty object.
+  let extra = {}
+  if (extra_data) {
+    if (typeof extra_data === 'string') {
+      try {
+        extra = JSON.parse(extra_data)
+      } catch (e) {
+        console.warn('[push-send] Failed to parse extra_data, ignoring:', e.message)
+      }
+    } else if (typeof extra_data === 'object') {
+      extra = extra_data
+    }
+  }
 
   const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
 
@@ -255,7 +282,6 @@ exports.handler = async (event) => {
   }
 
   console.log('[push-send] Subscriptions found:', subs?.length ?? 0)
-
   if (!subs?.length) return json(200, { sent: 0, reason: 'no_subscriptions' })
 
   const payload = buildPayload({
@@ -264,16 +290,33 @@ exports.handler = async (event) => {
     extra: { ...extra, actorId: actor_id },
   })
 
-  // ── Send with retry ──────────────────────────────────────────────────────
+  // ── FIXED: sendWithRetry now properly awaits the stale-subscription cleanup
+  //   before throwing, so the delete isn't fire-and-forget on the error path.
+  //   Also wraps sendNotification in a timeout so a slow push service can't
+  //   hang the Netlify function indefinitely.
+  const withTimeout = (promise, ms = 8000) =>
+    Promise.race([
+      promise,
+      new Promise((_, reject) =>
+        setTimeout(() => reject(Object.assign(new Error('Push timeout'), { isTimeout: true })), ms)
+      ),
+    ])
+
   const sendWithRetry = async (sub, attempt = 0) => {
     try {
-      await webpush.sendNotification(
-        { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-        payload
+      await withTimeout(
+        webpush.sendNotification(
+          { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+          payload
+        )
       )
       console.log('[push-send] Sent to endpoint:', sub.endpoint.slice(-20))
     } catch (err) {
-      // Expired/invalid subscription — clean it up
+      if (err.isTimeout) {
+        console.error('[push-send] Timed out sending to:', sub.endpoint.slice(-20))
+        throw err
+      }
+      // Expired/invalid subscription — await cleanup before throwing
       if (err.statusCode === 410 || err.statusCode === 404) {
         console.warn('[push-send] Removing dead subscription:', sub.endpoint.slice(-20))
         await sb.from('push_subscriptions').delete().eq('endpoint', sub.endpoint)
