@@ -102,6 +102,10 @@ export default function Register() {
       }
     }
 
+    // Save phone number to Supabase Auth user record (Phone column in dashboard)
+    const e164Phone = '+234' + phone.replace(/\D/g, '').replace(/^0/, '')
+    await sb.auth.updateUser({ phone: e164Phone })
+
     setLoading(false)
     toast.success('Welcome to Vii-Mbuni! 🎉')
     navigate('/')
