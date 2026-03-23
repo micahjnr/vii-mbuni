@@ -19,6 +19,17 @@ import toast from 'react-hot-toast'
 import clsx from 'clsx'
 import { askGroq } from '@/lib/groq'
 
+// ── Theme map — mirrors CreatePostModal's THEME_STYLES ─────────────────────
+const THEME_MAP = {
+  purple: { bg: 'linear-gradient(135deg,#8b3fc8,#5b0fa8)', color: '#ffffff' },
+  red:    { bg: 'linear-gradient(135deg,#e0174e,#c0024e)', color: '#ffffff' },
+  black:  { bg: '#1a1a1a',                                  color: '#ffffff' },
+  pink:   { bg: 'linear-gradient(135deg,#f953c6,#b91d73)', color: '#ffffff' },
+  aurora: { bg: 'linear-gradient(135deg,#8360c3,#2ebf91)', color: '#ffffff' },
+  amber:  { bg: 'linear-gradient(135deg,#f7971e,#ffd200)', color: '#3a2000' },
+  ocean:  { bg: 'linear-gradient(135deg,#1fa2ff,#12d8fa,#a6ffcb)', color: '#0a2a1a' },
+}
+
 function QuotePreview({ quotedPost }) {
   if (!quotedPost) return null
   return (
@@ -275,7 +286,7 @@ export default function PostCard({ post, onQuote, autoOpenComments = false }) {
     }
   }, [post.video_url])
 
-  // Pause video when scrolled out of view (no autoplay — user must tap to play)
+  // Pause video when scrolled out of view
   useEffect(() => {
     if (!post.video_url) return
     const el = videoRef.current
@@ -285,7 +296,6 @@ export default function PostCard({ post, onQuote, autoOpenComments = false }) {
         el.pause()
         setVideoPlaying(false)
       }
-      // No autoplay on scroll-in — user taps to start
     }, { threshold: 0.3 })
     obs.observe(el)
     return () => obs.disconnect()
@@ -306,7 +316,7 @@ export default function PostCard({ post, onQuote, autoOpenComments = false }) {
   const [likeCount, setLikeCount] = useState(Number(post.likes?.[0]?.count ?? 0))
   const [tldr, setTldr] = useState(null)
   const [tldrLoading, setTldrLoading] = useState(false)
-  const [translation, setTranslation] = useState(null)   // { lang, text }
+  const [translation, setTranslation] = useState(null)
   const [translating, setTranslating] = useState(false)
   const [totalCommentCount, setTotalCommentCount] = useState(
     (Number(post.comments?.[0]?.count ?? 0)) + (Number(post.comment_replies?.[0]?.count ?? 0))
@@ -318,6 +328,9 @@ export default function PostCard({ post, onQuote, autoOpenComments = false }) {
   const poll = post.poll_data
     ? (typeof post.poll_data === 'string' ? JSON.parse(post.poll_data) : post.poll_data)
     : null
+
+  // Resolve theme styles from post_theme key
+  const postThemeStyle = post.post_theme ? THEME_MAP[post.post_theme] : null
 
   const refreshCount = useCallback(async () => {
     try {
@@ -455,7 +468,7 @@ export default function PostCard({ post, onQuote, autoOpenComments = false }) {
         toast.success('Saved to bookmarks!')
       }
     } catch {
-      setBookmarked(prev) // revert on error
+      setBookmarked(prev)
       toast.error('Failed to update bookmark')
     }
   }
@@ -495,7 +508,6 @@ export default function PostCard({ post, onQuote, autoOpenComments = false }) {
       {/* Header */}
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-3 flex-1 min-w-0">
-          {/* Avatar — shows group icon if group post, else author avatar */}
           {groupName ? (
             <button
               onClick={e => { e.stopPropagation(); navigate('/groups') }}
@@ -514,14 +526,12 @@ export default function PostCard({ post, onQuote, autoOpenComments = false }) {
           <div className="text-left min-w-0 flex-1">
             {groupName ? (
               <>
-                {/* Group name — big and prominent */}
                 <button
                   onClick={e => { e.stopPropagation(); navigate('/groups') }}
                   className="font-bold text-base text-gray-900 dark:text-white hover:text-brand-500 transition-colors leading-tight block truncate"
                 >
                   {groupName}
                 </button>
-                {/* Author + time — small below */}
                 <button
                   onClick={() => navigate(`/profile/${postProfile?.id || post.user_id}`)}
                   className="flex items-center gap-1 mt-0.5"
@@ -606,6 +616,7 @@ export default function PostCard({ post, onQuote, autoOpenComments = false }) {
 
       {post.quoted_post_id && <QuotePreview quotedPost={quotedPost} />}
 
+      {/* ── Post content — themed or plain ──────────────────────────────── */}
       {postEditing ? (
         <div className="mb-3 space-y-2">
           <textarea value={postEditText} onChange={e => setPostEditText(e.target.value)} rows={4} autoFocus
@@ -627,7 +638,21 @@ export default function PostCard({ post, onQuote, autoOpenComments = false }) {
             </div>
           </div>
         </div>
+      ) : postThemeStyle ? (
+        /* ── THEMED post — colored background, centered bold text ── */
+        <div
+          className="rounded-2xl mb-3 flex items-center justify-center min-h-[200px] p-6"
+          style={{ background: postThemeStyle.bg }}
+        >
+          <p
+            className="font-bold text-xl text-center leading-snug break-words w-full drop-shadow"
+            style={{ color: postThemeStyle.color }}
+          >
+            {post.content}
+          </p>
+        </div>
       ) : (
+        /* ── Plain post — normal RichContent ── */
         <RichContent content={post.content} />
       )}
 
@@ -654,13 +679,11 @@ export default function PostCard({ post, onQuote, autoOpenComments = false }) {
             className="w-full h-full object-cover"
             style={{ display: 'block' }}
           />
-          {/* 🎬 badge — shown when paused */}
           {!videoPlaying && (
             <div className="absolute top-2 left-2 flex items-center gap-1 bg-black/60 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-0.5 rounded-full pointer-events-none">
               <VideoIcon size={10} /> VIDEO
             </div>
           )}
-          {/* Tap-to-play overlay — only shown when paused and not interacted */}
           {!videoPlaying && (
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
               <div className="w-14 h-14 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center shadow-lg">
@@ -671,7 +694,7 @@ export default function PostCard({ post, onQuote, autoOpenComments = false }) {
         </div>
       )}
 
-      {/* AI Translate — always shown */}
+      {/* AI Translate */}
       {!postEditing && post.content && (
         <div className="mb-2">
           {translation ? (
@@ -687,9 +710,9 @@ export default function PostCard({ post, onQuote, autoOpenComments = false }) {
           ) : (
             <div className="flex gap-1.5 flex-wrap">
               {[
-                { label: '🇬🇧 English',  lang: 'English'  },
-                { label: '🇳🇬 Hausa',    lang: 'Hausa'    },
-                { label: '🔤 Zaar',      lang: 'Zaar'     },
+                { label: '🇬🇧 English', lang: 'English' },
+                { label: '🇳🇬 Hausa',   lang: 'Hausa'   },
+                { label: '🔤 Zaar',     lang: 'Zaar'    },
               ].map(({ label, lang }) => (
                 <button key={lang}
                   disabled={translating}
@@ -715,7 +738,7 @@ export default function PostCard({ post, onQuote, autoOpenComments = false }) {
         </div>
       )}
 
-      {/* TL;DR — only shown for long posts */}
+      {/* TL;DR */}
       {(post.content?.length ?? 0) > 280 && !postEditing && (
         <div className="mb-3">
           {tldr ? (
@@ -779,6 +802,19 @@ export default function PostCard({ post, onQuote, autoOpenComments = false }) {
           </span>
         )}
       </div>
+
+      {/* Share modal */}
+      {shareOpen && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setShareOpen(false)} />
+          <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-20 bg-white dark:bg-surface-800 rounded-2xl shadow-card-lg border border-surface-200 dark:border-white/10 w-64 overflow-hidden">
+            <div className="px-4 py-3 text-xs font-bold text-gray-500 border-b border-surface-100 dark:border-white/10">Share post</div>
+            <button onClick={copyLink} className="w-full text-left px-4 py-3 text-sm text-gray-700 dark:text-gray-200 hover:bg-surface-100 dark:hover:bg-white/10 transition-colors">🔗 Copy link</button>
+            <button onClick={shareWhatsApp} className="w-full text-left px-4 py-3 text-sm text-gray-700 dark:text-gray-200 hover:bg-surface-100 dark:hover:bg-white/10 transition-colors">💬 Share on WhatsApp</button>
+            <button onClick={() => setShareOpen(false)} className="w-full text-left px-4 py-3 text-xs text-gray-400 hover:bg-surface-100 dark:hover:bg-white/10 border-t border-surface-100 dark:border-white/10 transition-colors">Cancel</button>
+          </div>
+        </>
+      )}
 
       {/* Comments panel */}
       {showComments && (
