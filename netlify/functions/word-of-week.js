@@ -8,7 +8,7 @@ const webpush = require('web-push')
 exports.handler = async () => {
   const supabaseUrl = process.env.SUPABASE_URL
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  const vapidPublic = process.env.VITE_VAPID_PUBLIC_KEY
+  const vapidPublic = process.env.VAPID_PUBLIC_KEY
   const vapidPrivate = process.env.VAPID_PRIVATE_KEY
   const vapidEmail = process.env.VAPID_EMAIL || 'admin@vii-mbuni.app'
 
@@ -52,7 +52,10 @@ exports.handler = async () => {
   await Promise.allSettled(
     (subs || []).map(async sub => {
       try {
-        await webpush.sendNotification(JSON.parse(sub.subscription), payload)
+        await webpush.sendNotification(
+          { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+          payload
+        )
         sent++
       } catch (e) {
         failed++
