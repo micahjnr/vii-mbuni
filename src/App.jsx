@@ -15,6 +15,8 @@ import Messages    from '@/pages/Messages'
 import ZaarCulture from '@/pages/ZaarCulture'
 import Profile     from '@/pages/Profile'
 
+import ZaarTutor from './pages/ZaarTutor';
+<Route path="/zaar-tutor" element={<AuthGuard><ZaarTutor /></AuthGuard>} />
 // ── Everything else: lazy loaded (only loads when user visits)
 const Explore     = lazy(() => import('@/pages/Explore'))
 const Chat        = lazy(() => import('@/pages/Chat'))
