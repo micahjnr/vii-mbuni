@@ -5,7 +5,7 @@ import {
   BookOpen, MessageCircle, Zap, Trophy, RotateCcw, ChevronDown
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { useStore } from '../store';
+import { useAuthStore } from '../store';
 
 // ── Learning modes ──────────────────────────────────────────────────────────
 const MODES = [
@@ -129,7 +129,7 @@ function XPToast({ xp }) {
 // ═══════════════════════════════════════════════════════════════════════════
 export default function ZaarTutor() {
   const navigate = useNavigate();
-  const { user, addXP } = useStore();
+  const user = useAuthStore((s) => s.user);
 
   const [mode, setMode] = useState(null);          // selected mode
   const [topic, setTopic] = useState(null);         // lesson topic
@@ -187,7 +187,6 @@ export default function ZaarTutor() {
       const xpEarned = mode === 'quiz' ? 10 : 3;
       setSessionXP(prev => prev + xpEarned);
       setStreak(prev => prev + 1);
-      if (addXP) addXP(xpEarned);
 
       if (streak > 0 && (streak + 1) % 5 === 0) {
         toast.custom(() => <XPToast xp={xpEarned * 3} />, { duration: 2000 });
@@ -198,7 +197,7 @@ export default function ZaarTutor() {
       setLoading(false);
       setTimeout(() => inputRef.current?.focus(), 100);
     }
-  }, [messages, loading, mode, topic, ttsEnabled, streak, addXP]);
+  }, [messages, loading, mode, topic, ttsEnabled, streak]);
 
   // ── Start a mode ────────────────────────────────────────────────────────
   const startMode = useCallback(async (selectedMode, selectedTopic = null) => {
