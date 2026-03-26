@@ -299,6 +299,10 @@ function ProverbsSection() {
     </section>
   )
 }
+//--------------------------------------------------
+<button onClick={() => navigate('/zaar-tutor')} className="...">
+  🦅 Learn with AI Tutor
+</button>
 
 // ─── Cultural Stories ─────────────────────────────────────────
 function StoriesSection() {
