@@ -21,24 +21,6 @@ function Section({ title, children }) {
         <span className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide">{title}</span>
       </div>
       <div className="divide-y divide-surface-100 dark:divide-white/5">{children}</div>
-      {/* About & Legal */}
-      <Section title="About & Legal">
-        <SettingRow
-          icon={<span className="text-base">ℹ️</span>}
-          label="About Vii-Mbuni"
-          sublabel="Developer info, mission & tech stack"
-          onClick={() => navigate('/about')}
-        />
-        <SettingRow
-          icon={<span className="text-base">📋</span>}
-          label="Terms & Conditions"
-          sublabel="Our agreement with you"
-          onClick={() => navigate('/terms')}
-        />
-        <div className="px-4 py-3 text-center">
-          <p className="text-xs text-gray-400">Vii-Mbuni v5.8.0 · Made with ♥ for Sayawa</p>
-        </div>
-      </Section>
     </div>
   )
 }
@@ -349,6 +331,25 @@ export default function Settings() {
           sublabel="Add to home screen for push notifications"
           onClick={() => toast('Open your browser menu → Add to Home Screen')}
         />
+      </Section>
+
+      {/* About & Legal */}
+      <Section title="About & Legal">
+        <Row
+          icon={Info}
+          label="About Vii-Mbuni"
+          sublabel="Developer info, mission & tech stack"
+          onClick={() => navigate('/about')}
+        />
+        <Row
+          icon={Shield}
+          label="Terms & Conditions"
+          sublabel="Our agreement with you"
+          onClick={() => navigate('/terms')}
+        />
+        <div className="px-4 py-3 text-center">
+          <p className="text-xs text-gray-400">Vii-Mbuni v5.8.0 · Made with ♥ for Sayawa</p>
+        </div>
       </Section>
 
       {/* Danger zone */}
