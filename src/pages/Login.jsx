@@ -43,10 +43,51 @@ export default function Login() {
     if (!phone || !password) return toast.error('Fill in all fields')
     if (!isValidPhone(phone)) return toast.error('Enter a valid phone number, e.g. +254712345678')
     setLoading(true)
-    const { error } = await sb.auth.signInWithPassword({ email: phoneToEmail(phone), password })
+
+    const syntheticEmail = phoneToEmail(phone)
+    const { error } = await sb.auth.signInWithPassword({ email: syntheticEmail, password })
+
+    if (!error) {
+      setLoading(false)
+      toast.success('Welcome back! 👋')
+      navigate('/')
+      return
+    }
+
+    // "Email not confirmed" — this user was created before the phone-signup fix.
+    // Re-confirm them server-side via the admin API, then sign in automatically.
+    if (error.message?.toLowerCase().includes('email not confirmed')) {
+      toast.loading('Confirming your account…', { id: 'confirm' })
+      try {
+        const res = await fetch('/.netlify/functions/phone-confirm', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: syntheticEmail }),
+        })
+        const result = await res.json()
+        toast.dismiss('confirm')
+
+        if (!res.ok) {
+          setLoading(false)
+          return toast.error(result.error || 'Could not confirm account. Please re-register.')
+        }
+
+        // Now try signing in again
+        const { error: retryErr } = await sb.auth.signInWithPassword({ email: syntheticEmail, password })
+        setLoading(false)
+        if (retryErr) return toast.error(retryErr.message)
+        toast.success('Welcome back! 👋')
+        navigate('/')
+      } catch {
+        toast.dismiss('confirm')
+        setLoading(false)
+        toast.error('Network error. Please try again.')
+      }
+      return
+    }
+
     setLoading(false)
-    if (error) toast.error(error.message)
-    else { toast.success('Welcome back! 👋'); navigate('/') }
+    toast.error(error.message)
   }
 
   const handleForgot = async (e) => {
