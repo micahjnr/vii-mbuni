@@ -16,7 +16,6 @@ import ZaarCulture from '@/pages/ZaarCulture'
 import Profile     from '@/pages/Profile'
 
 import ZaarTutor from './pages/ZaarTutor';
-<Route path="/zaar-tutor" element={<AuthGuard><ZaarTutor /></AuthGuard>} />
 // ── Everything else: lazy loaded (only loads when user visits)
 const Explore     = lazy(() => import('@/pages/Explore'))
 const Chat        = lazy(() => import('@/pages/Chat'))
@@ -338,6 +337,7 @@ export default function App() {
           <Route path="post/:postId" element={<Suspense fallback={<TabFallback />}><PostDetail /></Suspense>} />
           <Route path="settings"   element={<Suspense fallback={<TabFallback />}><Settings /></Suspense>} />
           <Route path="call-diag"  element={<Suspense fallback={<TabFallback />}><CallDiag /></Suspense>} />
+          <Route path="zaar-tutor" element={<ZaarTutor />} />
         </Route>
 
         <Route path="*" element={<NotFound />} />
