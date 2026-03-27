@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   MessageCircle, Heart, Send, Trash2, ChevronDown, ChevronUp,
@@ -1916,6 +1917,7 @@ function PronunciationsSection() {
 }
 
 export default function ZaarCulture() {
+  const navigate = useNavigate()
   const [vis, setVis] = useState(false)
   const [tab, setTab] = useState('wordofday')
   useEffect(() => { setTimeout(() => setVis(true), 80) }, [])
@@ -1928,6 +1930,7 @@ export default function ZaarCulture() {
         { id: 'flashcards',     emoji: '🧠', label: 'Flashcards'  },
         { id: 'quiz',           emoji: '🏆', label: 'Quiz'        },
         { id: 'pronunciations', emoji: '🎙️', label: 'Pronounce'  },
+        { id: 'tutor',          emoji: '🤖', label: 'AI Tutor', navigate: '/zaar-tutor' },
       ],
     },
     {
@@ -1972,6 +1975,12 @@ export default function ZaarCulture() {
         <p className="text-sm leading-relaxed max-w-md mx-auto" style={{ color: 'rgba(255,255,255,0.85)', fontFamily: 'Georgia, serif', fontStyle: 'italic', opacity: vis ? 1 : 0, transition: 'opacity 0.6s 0.3s' }}>
           Preserving the soul of Sayawa people — our language, our land, our ceremonies, our ancestors' unbroken voice.
         </p>
+        <button
+          onClick={() => navigate('/zaar-tutor')}
+          style={{ opacity: vis ? 1 : 0, transition: 'opacity 0.6s 0.45s', marginTop: 20, background: 'rgba(255,255,255,0.18)', border: '1.5px solid rgba(255,255,255,0.45)', borderRadius: 999, padding: '10px 24px', color: '#fff', fontSize: 14, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer', backdropFilter: 'blur(4px)' }}
+        >
+          🤖 Chat with Malam Zaar — AI Tutor
+        </button>
       </div>
 
       {/* Tabs — grouped wrap grid, no scroll */}
@@ -1987,7 +1996,7 @@ export default function ZaarCulture() {
                 return (
                   <button
                     key={t.id}
-                    onClick={() => setTab(t.id)}
+                    onClick={() => t.navigate ? navigate(t.navigate) : setTab(t.id)}
                     className={clsx(
                       'flex flex-col items-center justify-center gap-0.5 rounded-2xl py-2.5 px-1 transition-all',
                       active
