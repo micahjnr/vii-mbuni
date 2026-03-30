@@ -331,24 +331,84 @@ export default function CallScreen({
     }
   }, [callState])
 
+  // ── Ringtone (outgoing + incoming) ────────────────────────────────────────
+  // Plays a standard dual-tone phone ring at full volume.
+  // Pattern: two 400ms tones separated by 200ms, then 2s silence — classic PSTN ring.
   const ringTimer = useRef(null)
+  const ringCtxRef = useRef(null)
   useEffect(() => {
-    if (callState !== 'ringing') return
+    const shouldRing = callState === 'ringing' || callState === 'incoming'
+    if (!shouldRing) return
+
     const AudioCtx = window.AudioContext || window.webkitAudioContext
     if (!AudioCtx) return
-    const ctx = new AudioCtx(); let stopped = false
-    const play = () => {
-      if (stopped) return
-      const osc = ctx.createOscillator(); const g = ctx.createGain()
-      osc.connect(g); g.connect(ctx.destination); osc.type = 'sine'
-      osc.frequency.setValueAtTime(440, ctx.currentTime)
-      g.gain.setValueAtTime(0.3, ctx.currentTime)
-      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8)
-      osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.8)
-      if (!stopped) ringTimer.current = setTimeout(play, 1500)
+
+    let stopped = false
+
+    // Resume or create context (browsers require user-gesture; best-effort here)
+    const getCtx = () => {
+      if (ringCtxRef.current && ringCtxRef.current.state !== 'closed') return ringCtxRef.current
+      const c = new AudioCtx()
+      ringCtxRef.current = c
+      return c
     }
-    play()
-    return () => { stopped = true; clearTimeout(ringTimer.current); ctx.close().catch(() => {}) }
+
+    // Play one "brring" tone: two short beeps close together
+    const playRing = () => {
+      if (stopped) return
+      const ctx = getCtx()
+      if (ctx.state === 'suspended') ctx.resume().catch(() => {})
+
+      // Master gain — full volume (1.0)
+      const master = ctx.createGain()
+      master.gain.setValueAtTime(1.0, ctx.currentTime)
+      master.connect(ctx.destination)
+
+      // Standard telephone ring uses ~480 Hz + 440 Hz mixed
+      const freqs = [480, 440]
+      const now = ctx.currentTime
+
+      // Two bursts: [0ms–400ms] and [600ms–1000ms]
+      const bursts = [
+        { start: now + 0.00, end: now + 0.40 },
+        { start: now + 0.60, end: now + 1.00 },
+      ]
+
+      bursts.forEach(({ start, end }) => {
+        freqs.forEach(freq => {
+          const osc = ctx.createOscillator()
+          const g   = ctx.createGain()
+          osc.connect(g)
+          g.connect(master)
+
+          osc.type = 'sine'
+          osc.frequency.setValueAtTime(freq, start)
+
+          // Envelope: fast attack, sustain, fast release
+          g.gain.setValueAtTime(0, start)
+          g.gain.linearRampToValueAtTime(0.5, start + 0.02)   // 20ms attack
+          g.gain.setValueAtTime(0.5, end - 0.02)               // sustain
+          g.gain.linearRampToValueAtTime(0, end)               // 20ms release
+
+          osc.start(start)
+          osc.stop(end + 0.05)
+        })
+      })
+
+      // Schedule next ring after 1.0s tone + 2.0s silence = 3.0s total cycle
+      if (!stopped) ringTimer.current = setTimeout(playRing, 3000)
+    }
+
+    playRing()
+
+    return () => {
+      stopped = true
+      clearTimeout(ringTimer.current)
+      if (ringCtxRef.current) {
+        ringCtxRef.current.close().catch(() => {})
+        ringCtxRef.current = null
+      }
+    }
   }, [callState])
 
   const sendReaction = (emoji) => { setActiveReaction(emoji); setShowReactions(false) }
