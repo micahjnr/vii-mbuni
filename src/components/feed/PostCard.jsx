@@ -251,7 +251,9 @@ export default function PostCard({ post, onQuote, autoOpenComments = false }) {
   const qc = useQueryClient()
   const navigate = useNavigate()
   const articleRef = useRef(null)
-  const viewedRef = useRef(false)
+  // Persist viewed state in localStorage so re-mounts / page reloads don't re-count
+  const storageKey = `viewed_post_${post.id}_${user?.id ?? 'anon'}`
+  const viewedRef = useRef(!!localStorage.getItem(storageKey))
   const videoRef   = useRef(null)
   const [videoPoster, setVideoPoster] = useState(null)
   const [videoPlaying, setVideoPlaying] = useState(false)
@@ -350,6 +352,7 @@ export default function PostCard({ post, onQuote, autoOpenComments = false }) {
     const obs = new IntersectionObserver(async ([entry]) => {
       if (entry.isIntersecting && !viewedRef.current) {
         viewedRef.current = true
+        localStorage.setItem(storageKey, '1')
         obs.disconnect()
         try {
           const { data, error } = await sb.rpc('increment_view_count', { post_id: post.id })
