@@ -35,6 +35,7 @@ const CallDiag      = lazy(() => import('@/pages/CallDiag'))
 const ResetPassword = lazy(() => import('@/pages/ResetPassword'))
 const Terms         = lazy(() => import('@/pages/Terms'))
 const About         = lazy(() => import('@/pages/About'))
+const Betting       = lazy(() => import('@/pages/Betting'))
 
 // Tiny fallback — just keeps layout stable, no full-screen loader
 const TabFallback = () => <div style={{ minHeight: '60vh' }} />
@@ -338,6 +339,7 @@ export default function App() {
           <Route path="settings"   element={<Suspense fallback={<TabFallback />}><Settings /></Suspense>} />
           <Route path="call-diag"  element={<Suspense fallback={<TabFallback />}><CallDiag /></Suspense>} />
           <Route path="zaar-tutor" element={<ZaarTutor />} />
+          <Route path="betting"    element={<Suspense fallback={<TabFallback />}><Betting /></Suspense>} />
         </Route>
 
         <Route path="*" element={<NotFound />} />
