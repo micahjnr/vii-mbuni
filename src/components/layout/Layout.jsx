@@ -4,7 +4,7 @@ import {
   Home, Compass, Play, Users, MessageCircle, Globe,
   Calendar, BarChart2, User, Bell, BellOff, Moon, Sun, LogOut,
   Menu, X, Search, Trophy, Bookmark, Sparkles, ChevronRight, Settings,
-  Download
+  Download, TrendingUp
 } from 'lucide-react'
 import { useAuthStore, useUIStore, useNotifStore } from '@/store'
 import sb from '@/lib/supabase'
@@ -26,6 +26,7 @@ const NAV = [
   { to: '/friends',    icon: Users,         label: 'Friends'      },
   { to: '/messages',   icon: MessageCircle, label: 'Messages',    badge: 'msg' },
   { to: '/challenges', icon: Trophy,        label: 'Challenges'   },
+  { to: '/betting',    icon: TrendingUp,    label: 'Daily Acca'   },
   { to: '/groups',     icon: Globe,         label: 'Groups'       },
   { to: '/events',     icon: Calendar,      label: 'Events'       },
   { to: '/bookmarks',  icon: Bookmark,      label: 'Bookmarks'    },
@@ -137,60 +138,26 @@ export default function Layout() {
         if (!AudioCtx) return
         const ctx = new AudioCtx()
         let stopped = false
-
-        // Standard dual-tone telephone ring (480 Hz + 440 Hz), full volume.
-        // Pattern: two 400ms bursts separated by 200ms, then 2s silence (classic PSTN ring).
         const playRing = () => {
           if (stopped) return
-
-          const master = ctx.createGain()
-          master.gain.setValueAtTime(1.0, ctx.currentTime) // MAX volume
-          master.connect(ctx.destination)
-
-          const freqs = [480, 440]
-          const now = ctx.currentTime
-          const bursts = [
-            { start: now + 0.00, end: now + 0.40 },
-            { start: now + 0.60, end: now + 1.00 },
-          ]
-
-          bursts.forEach(({ start, end }) => {
-            freqs.forEach(freq => {
-              const osc = ctx.createOscillator()
-              const g   = ctx.createGain()
-              osc.connect(g); g.connect(master)
-              osc.type = 'sine'
-              osc.frequency.setValueAtTime(freq, start)
-              g.gain.setValueAtTime(0, start)
-              g.gain.linearRampToValueAtTime(0.5, start + 0.02)
-              g.gain.setValueAtTime(0.5, end - 0.02)
-              g.gain.linearRampToValueAtTime(0, end)
-              osc.start(start)
-              osc.stop(end + 0.05)
-            })
+          ;[880, 660].forEach((freq, i) => {
+            const osc = ctx.createOscillator()
+            const gain = ctx.createGain()
+            osc.connect(gain); gain.connect(ctx.destination)
+            osc.type = 'sine'
+            osc.frequency.value = freq
+            gain.gain.setValueAtTime(0.25, ctx.currentTime + i * 0.15)
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.15 + 0.12)
+            osc.start(ctx.currentTime + i * 0.15)
+            osc.stop(ctx.currentTime + i * 0.15 + 0.13)
           })
-
-          if (!stopped) incomingRingRef.current = setTimeout(playRing, 3000)
+          incomingRingRef.current = setTimeout(playRing, 1800)
         }
-
-        // Unlock AudioContext immediately — browsers suspend it until a user
-        // gesture, but calling resume() right away works on most platforms.
-        const startRinging = () => {
-          ctx.resume().then(playRing).catch(playRing)
-        }
-
-        // Try immediately; also hook into the next user interaction as a fallback
-        startRinging()
-        const unlock = () => { ctx.resume().catch(() => {}) }
-        document.addEventListener('pointerdown', unlock, { once: true })
-        document.addEventListener('keydown',     unlock, { once: true })
-
+        playRing()
         incomingRingCtxRef.current = ctx
         incomingRingStopRef.current = () => {
           stopped = true
           clearTimeout(incomingRingRef.current)
-          document.removeEventListener('pointerdown', unlock)
-          document.removeEventListener('keydown',     unlock)
           ctx.close().catch(() => {})
         }
       } catch (_) {}
