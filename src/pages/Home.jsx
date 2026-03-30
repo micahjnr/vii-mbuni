@@ -10,6 +10,7 @@ import StoriesBar from '@/components/stories/StoriesBar'
 import Leaderboard from '@/components/gamification/Leaderboard'
 import CreatePostModal from '@/components/feed/CreatePostModal'
 import TrendingTopics from '@/components/feed/TrendingTopics'
+import PeopleYouMayKnow from '@/components/feed/PeopleYouMayKnow'
 import { PostSkeleton, EmptyState } from '@/components/ui/PageLoader'
 import XPBadge, { getLevelInfo } from '@/components/gamification/XPBadge'
 import toast from 'react-hot-toast'
@@ -415,6 +416,7 @@ export default function Home() {
         {/* Right sidebar — desktop only */}
         <div className="hidden xl:flex flex-col gap-4 w-72 flex-shrink-0">
           <XPWidget profile={profile} />
+          <PeopleYouMayKnow />
           <TrendingTopics />
           <Leaderboard />
         </div>
