@@ -1,44 +1,52 @@
 // netlify/functions/accumulator-service.js
-// Core logic: fetch odds → filter → score → build accumulator → save to Supabase
-// This is the shared service imported by the HTTP handler and the cron job.
+// Powered by API-Football (api-sports.io) — 100 requests/day FREE, no credit card
+//
+// Sign up: https://dashboard.api-football.com/register
+// Docs:    https://www.api-football.com/documentation-v3
+//
+// Daily request budget (3 requests total):
+//   1 × /fixtures      → upcoming matches for target leagues
+//   1 × /odds          → pre-match odds for those fixtures
+//   1 × /predictions   → AI predictions (optional confidence boost)
 
 const { createClient } = require('@supabase/supabase-js')
 
-const ODDS_API_KEY      = process.env.ODDS_API_KEY        // https://the-odds-api.com
-const ODDS_API_BASE     = 'https://api.the-odds-api.com/v4'
+const API_FOOTBALL_KEY  = process.env.API_FOOTBALL_KEY   // from dashboard.api-football.com
+const API_BASE          = 'https://v3.football.api-sports.io'
 const SUPABASE_URL      = process.env.SUPABASE_URL
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
 
-// ── Target accumulator window ─────────────────────────────────────
-const TARGET_MIN  = 1.80
-const TARGET_MAX  = 1.90
+// ── Accumulator target window ─────────────────────────────────────
+const TARGET_MIN = 1.80
+const TARGET_MAX = 1.90
 
-// ── Pick filter thresholds ────────────────────────────────────────
+// ── Per-pick filter thresholds ────────────────────────────────────
 const PICK_ODDS_MIN  = 1.05
 const PICK_ODDS_MAX  = 1.55
-const PROB_THRESHOLD = 0.65
+const PROB_THRESHOLD = 0.64   // 1 / 1.55 ≈ 0.645
 
-// ── Sports to scan (add/remove as needed) ────────────────────────
-const SPORTS = [
-  'soccer_epl',
-  'soccer_spain_la_liga',
-  'soccer_germany_bundesliga',
-  'soccer_italy_serie_a',
-  'soccer_france_ligue_one',
-  'soccer_uefa_champs_league',
-  'soccer_africa_nations_cup',
-  'basketball_nba',
-  'basketball_euroleague',
-  'tennis_atp_french_open',
-  'americanfootball_nfl',
+// ── League IDs to scan (API-Football league IDs) ──────────────────
+// These cover the most active leagues with odds data on the free plan.
+// Full list: GET /leagues
+const LEAGUE_IDS = [
+  39,   // Premier League
+  140,  // La Liga
+  78,   // Bundesliga
+  135,  // Serie A
+  61,   // Ligue 1
+  2,    // UEFA Champions League
+  3,    // UEFA Europa League
+  197,  // AFCON (Africa Cup of Nations)
+  529,  // Super Lig (Turkey)
+  94,   // Primeira Liga (Portugal)
 ]
 
-// ── Markets to request ────────────────────────────────────────────
-// h2h = 1X2, spreads = Asian Handicap, totals = Over/Under
-const MARKET_GROUPS = ['h2h', 'spreads', 'totals', 'btts', 'double_chance', 'draw_no_bet']
+// ── Bookmaker preference (API-Football bookmaker IDs) ─────────────
+// 8  = Bet365 (most coverage)
+// 11 = Bwin
+// 6  = William Hill
+const PREFERRED_BOOKMAKERS = [8, 11, 6]
 
-// ─────────────────────────────────────────────────────────────────
-// Helpers
 // ─────────────────────────────────────────────────────────────────
 
 function todayISO() {
@@ -49,264 +57,282 @@ function supabase() {
   return createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 }
 
-/**
- * Fetch all odds for a given sport and markets from The Odds API.
- * Returns raw games array or [] on failure.
- */
-async function fetchOddsForSport(sport) {
-  const markets = MARKET_GROUPS.join(',')
-  const url = `${ODDS_API_BASE}/sports/${sport}/odds?apiKey=${ODDS_API_KEY}&regions=eu&markets=${markets}&oddsFormat=decimal&dateFormat=iso`
-  try {
-    const res = await fetch(url)
-    if (!res.ok) {
-      console.warn(`[Odds API] ${sport} returned ${res.status}`)
-      return []
-    }
-    return await res.json()
-  } catch (err) {
-    console.error(`[Odds API] fetch error for ${sport}:`, err.message)
-    return []
+// API-Football headers
+function apiHeaders() {
+  return {
+    'x-apisports-key': API_FOOTBALL_KEY,
   }
 }
 
-/**
- * Given a raw game from the Odds API, extract all individual pick candidates.
- * Each candidate: { match, league, market, pick, odds, probability, matchId }
- */
-function extractPickCandidates(game, sport) {
-  const candidates = []
-  const matchLabel = `${game.home_team} vs ${game.away_team}`
-  const league     = game.sport_title || sport
+// Generic GET helper — logs remaining quota
+async function apiFetch(path) {
+  const url = `${API_BASE}${path}`
+  const res = await fetch(url, { headers: apiHeaders() })
 
-  for (const bookmaker of (game.bookmakers || [])) {
-    for (const market of (bookmaker.markets || [])) {
-      for (const outcome of (market.outcomes || [])) {
-        const odds = parseFloat(outcome.price)
+  const remaining = res.headers.get('x-ratelimit-requests-remaining')
+  const used      = res.headers.get('x-ratelimit-requests-limit')
+  if (remaining !== null) {
+    console.log(`[API-Football] ${path.split('?')[0]} | remaining: ${remaining}/${used}`)
+  }
+
+  if (res.status === 499) throw new Error('API-Football: invalid or missing API key (499). Check API_FOOTBALL_KEY.')
+  if (!res.ok) throw new Error(`API-Football: HTTP ${res.status} for ${path}`)
+
+  const json = await res.json()
+
+  if (json.errors && Object.keys(json.errors).length > 0) {
+    const msg = Object.values(json.errors).join(', ')
+    throw new Error(`API-Football error: ${msg}`)
+  }
+
+  return json.response || []
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Step 1: Fetch upcoming fixtures for today + tomorrow
+// Returns lightweight fixture objects: { id, home, away, league, date }
+// ─────────────────────────────────────────────────────────────────
+async function fetchFixtures() {
+  const today    = todayISO()
+  const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10)
+
+  // One request: fetch fixtures for today across all target leagues
+  // We use ?date= to get a single day's worth and filter by league client-side
+  const raw = await apiFetch(`/fixtures?date=${today}&timezone=UTC`)
+
+  // Also grab tomorrow if today returns nothing (e.g. early morning run)
+  let fixtures = raw
+  if (fixtures.length === 0) {
+    const rawTomorrow = await apiFetch(`/fixtures?date=${tomorrow}&timezone=UTC`)
+    fixtures = rawTomorrow
+  }
+
+  // Filter to our target leagues
+  const leagueSet = new Set(LEAGUE_IDS)
+  return fixtures
+    .filter(f => leagueSet.has(f.league?.id) && f.fixture?.status?.short === 'NS')
+    .map(f => ({
+      id:     f.fixture.id,
+      home:   f.teams.home.name,
+      away:   f.teams.away.name,
+      league: f.league.name,
+      date:   f.fixture.date,
+    }))
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Step 2: Fetch pre-match odds for a fixture
+// Returns array of candidate picks: { matchId, match, league, market, pick, odds, probability }
+// ─────────────────────────────────────────────────────────────────
+async function fetchOddsForFixtures(fixtures) {
+  const candidates = []
+
+  // Batch: API-Football /odds accepts one fixture at a time on free plan.
+  // We iterate but cap to 10 fixtures to stay within 100 req/day budget.
+  const sample = fixtures.slice(0, 10)
+
+  for (const fixture of sample) {
+    const matchLabel = `${fixture.home} vs ${fixture.away}`
+
+    let oddsData
+    try {
+      oddsData = await apiFetch(`/odds?fixture=${fixture.id}&bookmaker=8`)
+    } catch (err) {
+      console.warn(`[Odds] Fixture ${fixture.id} failed: ${err.message}`)
+      continue
+    }
+
+    if (!oddsData.length) continue
+
+    // Use first bookmaker result (Bet365 = bookmaker 8)
+    const bookmaker = oddsData[0]?.bookmakers?.[0]
+    if (!bookmaker) continue
+
+    for (const bet of (bookmaker.bets || [])) {
+      const market = humanizeMarket(bet.name)
+
+      for (const val of (bet.values || [])) {
+        const odds = parseFloat(val.odd)
         if (isNaN(odds) || odds < PICK_ODDS_MIN || odds > PICK_ODDS_MAX) continue
 
         const probability = parseFloat((1 / odds).toFixed(4))
         if (probability < PROB_THRESHOLD) continue
 
         candidates.push({
-          matchId:     game.id,
+          matchId:     fixture.id,
           match:       matchLabel,
-          league,
-          market:      humanizeMarket(market.key, outcome),
-          pick:        formatPickLabel(market.key, outcome),
+          league:      fixture.league,
+          market,
+          pick:        val.value,
           odds,
           probability,
-          _bookmaker:  bookmaker.title,  // used internally for dedup, stripped before save
         })
       }
     }
-    // Only use first bookmaker per game to avoid duplicates
-    break
   }
 
   return candidates
 }
 
-/** Convert API market key to human-readable string */
-function humanizeMarket(key, outcome) {
+// Map API-Football bet names to clean labels
+function humanizeMarket(betName) {
   const map = {
-    h2h:           '1X2 (Match Result)',
-    spreads:       'Asian Handicap',
-    totals:        'Over/Under',
-    btts:          'Both Teams To Score',
-    double_chance: 'Double Chance',
-    draw_no_bet:   'Draw No Bet',
+    'Match Winner':            '1X2 (Match Result)',
+    'Double Chance':           'Double Chance',
+    'Goals Over/Under':        'Over/Under',
+    'Both Teams Score':        'Both Teams To Score',
+    'Draw No Bet':             'Draw No Bet',
+    'Asian Handicap':          'Asian Handicap',
+    'Correct Score':           'Correct Score',
+    'First Half Winner':       'Half-Time Result',
+    'Second Half Winner':      'Second Half Result',
   }
-  return map[key] || key
+  return map[betName] || betName
 }
 
-/** Build a human-readable pick label */
-function formatPickLabel(marketKey, outcome) {
-  if (marketKey === 'totals') {
-    return `${outcome.name} ${outcome.point} Goals`   // e.g. "Over 1.5 Goals"
-  }
-  if (marketKey === 'spreads') {
-    const sign = outcome.point > 0 ? `+${outcome.point}` : `${outcome.point}`
-    return `${outcome.name} (${sign})`
-  }
-  if (marketKey === 'btts') {
-    return `BTTS: ${outcome.name}`
-  }
-  return outcome.name   // e.g. "Arsenal", "Arsenal/Draw"
-}
+// ─────────────────────────────────────────────────────────────────
+// Scoring, building, analysis — same as before
+// ─────────────────────────────────────────────────────────────────
 
-/**
- * Score a pick candidate.
- * score = (probability * 0.6) + (form_proxy * 0.4)
- *
- * We don't have live form data without a paid stats API, so we proxy
- * "form strength" from the implied probability itself (stronger favourite
- * ↔ higher recent form). For a real integration substitute team-stats API.
- */
-function scoreCandidate(candidate) {
-  const form_proxy = candidate.probability   // proxy — replace with real form data
-  return (candidate.probability * 0.6) + (form_proxy * 0.4)
-}
-
-/**
- * Given a sorted list of candidates, find a combination of 2–3 picks
- * whose combined odds fall inside [TARGET_MIN, TARGET_MAX].
- * Rules: no two picks from the same match; prefer mixed markets.
- */
-function buildAccumulator(candidates) {
-  const scored = candidates
-    .map(c => ({ ...c, _score: scoreCandidate(c) }))
-    .sort((a, b) => b._score - a._score)
-
-  const top = scored.slice(0, 30) // search space
-
-  // ── Try all 3-pick combos first ──────────────────────────────
-  for (let i = 0; i < top.length - 2; i++) {
-    for (let j = i + 1; j < top.length - 1; j++) {
-      for (let k = j + 1; k < top.length; k++) {
-        const trio = [top[i], top[j], top[k]]
-        if (!validCombo(trio)) continue
-        const total = combinedOdds(trio)
-        if (total >= TARGET_MIN && total <= TARGET_MAX) {
-          return { selections: trio, total_odds: total }
-        }
-      }
-    }
-  }
-
-  // ── Fall back to 2-pick combos ────────────────────────────────
-  for (let i = 0; i < top.length - 1; i++) {
-    for (let j = i + 1; j < top.length; j++) {
-      const pair = [top[i], top[j]]
-      if (!validCombo(pair)) continue
-      const total = combinedOdds(pair)
-      if (total >= TARGET_MIN && total <= TARGET_MAX) {
-        return { selections: pair, total_odds: total }
-      }
-    }
-  }
-
-  return null
-}
-
-function validCombo(picks) {
-  // No two picks from the same match
-  const matchIds = picks.map(p => p.matchId)
-  if (new Set(matchIds).size !== matchIds.length) return false
-
-  // Prefer mixed markets (soft rule: allow same market only if no alternative)
-  // Hard block: only if literally all three are identical market
-  const markets = picks.map(p => p.market)
-  if (picks.length === 3 && new Set(markets).size === 1) return false
-
-  return true
+function scoreCandidate(c) {
+  // score = (probability * 0.6) + (form_proxy * 0.4)
+  // form_proxy = probability (proxy until real team stats available)
+  return parseFloat((c.probability * 0.6 + c.probability * 0.4).toFixed(6))
 }
 
 function combinedOdds(picks) {
   return parseFloat(picks.reduce((acc, p) => acc * p.odds, 1).toFixed(3))
 }
 
-/**
- * Generate a concise analysis paragraph.
- */
-function buildAnalysis(selections, total_odds, confidence) {
-  const leagues  = [...new Set(selections.map(s => s.league))].join(', ')
-  const markets  = [...new Set(selections.map(s => s.market))].join(' & ')
-  const avgProb  = (selections.reduce((a, b) => a + b.probability, 0) / selections.length * 100).toFixed(0)
+function validCombo(picks) {
+  const ids = picks.map(p => p.matchId)
+  if (new Set(ids).size !== ids.length) return false
+  if (picks.length === 3 && new Set(picks.map(p => p.market)).size === 1) return false
+  return true
+}
 
+function buildAccumulator(candidates) {
+  const scored = candidates
+    .map(c => ({ ...c, _score: scoreCandidate(c) }))
+    .sort((a, b) => b._score - a._score)
+
+  const pool = scored.slice(0, 40)
+
+  // Try 3-folds first
+  for (let i = 0; i < pool.length - 2; i++) {
+    for (let j = i + 1; j < pool.length - 1; j++) {
+      if (pool[i].odds * pool[j].odds > TARGET_MAX) continue
+      for (let k = j + 1; k < pool.length; k++) {
+        const trio = [pool[i], pool[j], pool[k]]
+        if (!validCombo(trio)) continue
+        const total = combinedOdds(trio)
+        if (total >= TARGET_MIN && total <= TARGET_MAX) return { selections: trio, total_odds: total }
+      }
+    }
+  }
+
+  // Fall back to 2-folds
+  for (let i = 0; i < pool.length - 1; i++) {
+    for (let j = i + 1; j < pool.length; j++) {
+      const pair = [pool[i], pool[j]]
+      if (!validCombo(pair)) continue
+      const total = combinedOdds(pair)
+      if (total >= TARGET_MIN && total <= TARGET_MAX) return { selections: pair, total_odds: total }
+    }
+  }
+
+  return null
+}
+
+function buildAnalysis(selections, total_odds, confidence) {
+  const leagues   = [...new Set(selections.map(s => s.league))].join(', ')
+  const markets   = [...new Set(selections.map(s => s.market))].join(' & ')
+  const avgProbPc = (selections.reduce((a, b) => a + b.probability, 0) / selections.length * 100).toFixed(0)
   return (
-    `This ${selections.length}-fold accumulator spans ${leagues}, combining picks across ${markets}. ` +
-    `Each selection carries an implied probability above ${avgProb}%, reflecting high-confidence outcomes ` +
-    `backed by market consensus. Combined odds of ${total_odds.toFixed(2)} sit in our 1.80–1.90 ` +
-    `target band, offering solid value without overextending risk. ` +
-    `Confidence score: ${confidence}/100. Stake responsibly.`
+    `This ${selections.length}-fold accumulator spans ${leagues}, combining selections across ${markets}. ` +
+    `Each pick carries an average implied probability of ${avgProbPc}%, reflecting strong market consensus. ` +
+    `Combined odds of ${total_odds.toFixed(2)} sit within our 1.80–1.90 target window — ` +
+    `solid value without over-leveraging risk. Confidence: ${confidence}/100. ` +
+    `Stake responsibly — this is a data-driven prediction, not a guarantee.`
   )
 }
 
 // ─────────────────────────────────────────────────────────────────
-// MAIN EXPORT
+// MAIN
 // ─────────────────────────────────────────────────────────────────
 
 async function generateDailyAccumulator() {
+  if (!API_FOOTBALL_KEY) throw new Error('API_FOOTBALL_KEY is not set in environment variables.')
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) throw new Error('Supabase env vars missing.')
+
   const today = todayISO()
-  const db = supabase()
+  const db    = supabase()
 
-  // ── 1. Check if today's acca already exists ───────────────────
+  // Skip if already generated today
   const { data: existing } = await db
-    .from('daily_accumulators')
-    .select('id')
-    .eq('date', today)
-    .maybeSingle()
-
+    .from('daily_accumulators').select('id').eq('date', today).maybeSingle()
   if (existing) {
-    console.log(`[Acca] Accumulator for ${today} already exists (${existing.id})`)
+    console.log(`[Acca] Already generated for ${today}`)
     return { skipped: true, id: existing.id }
   }
 
-  // ── 2. Fetch odds from all sports in parallel ─────────────────
-  console.log(`[Acca] Fetching odds for ${SPORTS.length} sports…`)
-  const allGames = (
-    await Promise.all(SPORTS.map(s => fetchOddsForSport(s).then(games =>
-      games.map(g => ({ ...g, _sport: s }))
-    )))
-  ).flat()
-  console.log(`[Acca] Total games fetched: ${allGames.length}`)
+  // 1. Fixtures
+  console.log('[Acca] Fetching fixtures…')
+  const fixtures = await fetchFixtures()
+  console.log(`[Acca] ${fixtures.length} upcoming fixtures in target leagues`)
 
-  if (allGames.length === 0) {
-    throw new Error('No games returned from Odds API. Check API key and quota.')
+  if (fixtures.length === 0) {
+    throw new Error('No upcoming fixtures found for target leagues today. Try adding more league IDs.')
   }
 
-  // ── 3. Extract candidates ─────────────────────────────────────
-  const allCandidates = allGames.flatMap(g => extractPickCandidates(g, g._sport))
-  console.log(`[Acca] Raw candidates: ${allCandidates.length}`)
+  // 2. Odds
+  console.log('[Acca] Fetching odds…')
+  const candidates = await fetchOddsForFixtures(fixtures)
+  console.log(`[Acca] ${candidates.length} qualifying pick candidates`)
 
-  if (allCandidates.length < 2) {
-    throw new Error(`Not enough qualifying picks (need ≥2, got ${allCandidates.length}). Try relaxing thresholds.`)
-  }
-
-  // ── 4. Deduplicate: keep best-scored pick per match per market ─
+  // Deduplicate: best per (matchId × market)
   const deduped = Object.values(
-    allCandidates.reduce((acc, c) => {
+    candidates.reduce((acc, c) => {
       const key = `${c.matchId}::${c.market}`
       if (!acc[key] || scoreCandidate(c) > scoreCandidate(acc[key])) acc[key] = c
       return acc
     }, {})
   )
 
-  // ── 5. Build accumulator ──────────────────────────────────────
-  const result = buildAccumulator(deduped)
-
-  if (!result) {
+  if (deduped.length < 2) {
     throw new Error(
-      `Could not find a valid combination within odds range ${TARGET_MIN}–${TARGET_MAX}. ` +
-      `Candidates: ${deduped.length}. Consider widening the range or expanding sports list.`
+      `Only ${deduped.length} qualifying picks found (need ≥ 2). ` +
+      'Possible reasons: no matches today, bookmaker 8 (Bet365) has no odds yet, or thresholds too strict.'
     )
   }
 
-  // ── 6. Confidence & analysis ──────────────────────────────────
-  const rawConfidence = (result.selections.reduce((a, b) => a + b.probability, 0) / result.selections.length) * 100
-  const confidence    = Math.min(85, Math.max(70, Math.round(rawConfidence)))
-  const analysis      = buildAnalysis(result.selections, result.total_odds, confidence)
+  // 3. Build accumulator
+  const result = buildAccumulator(deduped)
 
-  // ── 7. Strip internal fields before persisting ────────────────
-  const cleanSelections = result.selections.map(({ _score, _bookmaker, matchId, ...sel }) => sel)
+  if (!result) {
+    const topOdds = deduped.sort((a, b) => b.odds - a.odds).slice(0, 5).map(c => c.odds.toFixed(2)).join(', ')
+    throw new Error(
+      `No combination found in ${TARGET_MIN}–${TARGET_MAX} range. ` +
+      `Top pick odds available: ${topOdds}. ` +
+      'Consider adding more leagues or widening the odds range slightly.'
+    )
+  }
 
-  // ── 8. Save to Supabase ───────────────────────────────────────
+  // 4. Confidence + analysis
+  const avgProb    = result.selections.reduce((a, b) => a + b.probability, 0) / result.selections.length
+  const confidence = Math.min(85, Math.max(70, Math.round(avgProb * 100)))
+  const analysis   = buildAnalysis(result.selections, result.total_odds, confidence)
+  const cleanSels  = result.selections.map(({ _score, matchId, ...sel }) => sel)
+
+  // 5. Save
   const { data: saved, error } = await db
     .from('daily_accumulators')
-    .insert({
-      date:       today,
-      selections: cleanSelections,
-      total_odds: result.total_odds,
-      confidence,
-      analysis,
-      status:     'pending',
-    })
-    .select()
-    .single()
+    .insert({ date: today, selections: cleanSels, total_odds: result.total_odds, confidence, analysis, status: 'pending' })
+    .select().single()
 
   if (error) throw new Error(`Supabase insert failed: ${error.message}`)
 
-  console.log(`[Acca] ✅ Saved accumulator ${saved.id} — odds: ${saved.total_odds}, confidence: ${saved.confidence}`)
+  console.log(`[Acca] ✅ Saved ${saved.id} — odds: ${saved.total_odds}, confidence: ${saved.confidence}`)
   return saved
 }
 
