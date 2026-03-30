@@ -226,6 +226,17 @@ export default function Profile() {
 
   const blockUser = useMutation({
     mutationFn: async () => {
+      // If they were friends, decrement counts on both sides before blocking
+      if (friendStatus?.status === 'accepted') {
+        await Promise.all([
+          sb.from('profiles')
+            .update({ follower_count: Math.max(0, (profile?.follower_count ?? 1) - 1) })
+            .eq('id', viewId),
+          sb.from('profiles')
+            .update({ following_count: Math.max(0, (myProfile?.following_count ?? 1) - 1) })
+            .eq('id', user.id),
+        ]).catch(() => {})
+      }
       await sb.from('friends').upsert(
         { user_id: user.id, friend_id: viewId, status: 'blocked' },
         { onConflict: 'user_id,friend_id' }
@@ -236,7 +247,12 @@ export default function Profile() {
         { onConflict: 'user_id,blocked_id' }
       ).then(() => {}).catch(() => {})
     },
-    onSuccess: () => { qc.invalidateQueries(['friend-status']); toast.success('User blocked') },
+    onSuccess: () => {
+      qc.invalidateQueries(['friend-status'])
+      qc.invalidateQueries(['profile', viewId])
+      qc.invalidateQueries(['profile', user.id])
+      toast.success('User blocked')
+    },
   })
 
   const [reportReason, setReportReason] = useState('')
@@ -380,7 +396,18 @@ export default function Profile() {
             .update({ status: 'accepted' })
             .eq('user_id', viewId)
             .eq('friend_id', user.id)
+          // Increment counts: viewId gains a follower, user.id gains a following
+          await Promise.all([
+            sb.rpc('increment_follower_count', { target_user_id: viewId }).catch(() =>
+              sb.from('profiles').update({ follower_count: (profile?.follower_count ?? 0) + 1 }).eq('id', viewId)
+            ),
+            sb.rpc('increment_follower_count', { target_user_id: user.id }).catch(() =>
+              sb.from('profiles').update({ following_count: (myProfile?.following_count ?? 0) + 1 }).eq('id', user.id)
+            ),
+          ]).catch(() => {})
           qc.invalidateQueries(['friend-status'])
+          qc.invalidateQueries(['profile', viewId])
+          qc.invalidateQueries(['profile', user.id])
           toast.success('Friend request accepted!')
         }}
         className="btn-primary text-xs px-3 py-1.5 gap-1.5"
