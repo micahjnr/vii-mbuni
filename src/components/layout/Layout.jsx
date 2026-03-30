@@ -37,11 +37,11 @@ const NAV = [
 ]
 
 const BOTTOM_NAV = [
-  { to: '/',         icon: Home,          label: 'Home',     end: true },
-  { to: '/friends',  icon: Users,         label: 'Friends'            },
-  { to: '/messages', icon: MessageCircle, label: 'Messages', badge: 'msg' },
-  { to: '/zaar-culture', icon: null, label: 'Zaar', zaar: true },
-  { to: '/profile',  icon: User,          label: 'Profile'            },
+  { to: '/',         icon: Home,          label: 'Home',        end: true  },
+  { to: '/friends',  icon: Users,         label: 'Friends'               },
+  { to: '/messages', icon: MessageCircle, label: 'Messages',    badge: 'msg' },
+  { to: '/zaar-culture', icon: null,      label: 'Zaar',        zaar: true },
+  { to: '/profile',  icon: User,          label: 'Profile'               },
 ]
 
 export default function Layout() {
@@ -507,6 +507,28 @@ export default function Layout() {
             </div>
             <span className="text-[10px] font-semibold text-gray-500 dark:text-gray-400">Post</span>
           </button>
+          {/* Notification bell — desktop top-bar equivalent for mobile */}
+          <div className="flex-1 relative" ref={notifRef}>
+          <button
+            onClick={() => setNotifOpen(v => !v)}
+            className="flex flex-col items-center justify-center w-full py-2 px-1 gap-0.5 relative text-gray-500 dark:text-gray-400"
+          >
+            <div className="relative">
+              <Bell size={23} strokeWidth={2} />
+              {count > 0 && (
+                <span className="absolute -top-1.5 -right-2 min-w-[16px] h-[16px] bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center px-0.5">
+                  {count > 9 ? '9+' : count}
+                </span>
+              )}
+            </div>
+            <span className="text-[10px] font-semibold">Alerts</span>
+          </button>
+          {notifOpen && (
+            <div className="absolute bottom-full right-0 mb-2 z-50">
+              <NotifPanel onClose={() => setNotifOpen(false)} />
+            </div>
+          )}
+          </div>
         </nav>
       </div>
 
