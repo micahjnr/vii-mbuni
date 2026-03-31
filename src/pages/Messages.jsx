@@ -274,7 +274,9 @@ export default function Messages() {
     staleTime: 10_000,
   })
 
-  const unreadCount = convos.filter(c => c.unreadCount > 0).length
+  const unreadCount = convos.filter(c =>
+    c.unreadCount > 0 && c.lastMsg?.sender_id !== user?.id
+  ).length
 
   // Keep the nav badge in sync with what the conversation list actually shows.
   // This catches stale badge counts (e.g. messages marked read on another device).
@@ -283,11 +285,12 @@ export default function Messages() {
   }, [unreadCount])
 
   const filtered = convos
-    .filter(({ other, unreadCount: uc }) => {
+    .filter(({ other, lastMsg, unreadCount: uc }) => {
       const matchesSearch = !search.trim() ||
         other.full_name?.toLowerCase().includes(search.toLowerCase()) ||
         other.username?.toLowerCase().includes(search.toLowerCase())
-      const matchesFilter = filter === 'all' || uc > 0
+      const isActuallyUnread = uc > 0 && lastMsg?.sender_id !== user?.id
+      const matchesFilter = filter === 'all' || isActuallyUnread
       return matchesSearch && matchesFilter
     })
     // Sort: online users first, then by last_active desc
@@ -409,8 +412,8 @@ export default function Messages() {
           {/* Conversation rows */}
           <div className="space-y-0.5">
             {filtered.map(({ other, lastMsg, unreadCount: uc }) => {
-              const hasUnread = uc > 0
               const isMe = lastMsg.sender_id === user.id
+              const hasUnread = uc > 0 && !isMe
               const isOnline = onlineUsers.includes(other.id)
               const { icon, text } = previewContent(lastMsg)
               const seen = lastSeenLabel(other.last_active, isOnline)
