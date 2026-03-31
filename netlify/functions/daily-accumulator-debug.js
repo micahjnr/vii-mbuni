@@ -59,10 +59,34 @@ exports.handler = async (event) => {
     }
   }
 
+  // Also check odds for first 3 NS fixtures today
+  const todayFixtures = (todayRes.data?.response || [])
+    .filter(f => f.fixture?.status?.short === 'NS')
+    .slice(0, 3)
+
+  const oddsResults = []
+  for (const f of todayFixtures) {
+    const o1 = await apiFetch(`/odds?fixture=${f.fixture.id}&bookmaker=8`)
+    const o2 = await apiFetch(`/odds?fixture=${f.fixture.id}`)
+    oddsResults.push({
+      fixture: `${f.teams.home.name} vs ${f.teams.away.name}`,
+      league: f.league.name,
+      leagueId: f.league.id,
+      bookmaker8HasOdds: (o1.data?.response?.length || 0) > 0,
+      anyBookmakerHasOdds: (o2.data?.response?.length || 0) > 0,
+      bookmakerCount: o2.data?.response?.[0]?.bookmakers?.length || 0,
+      sampleBets: o2.data?.response?.[0]?.bookmakers?.[0]?.bets?.slice(0,2)?.map(b => ({
+        name: b.name,
+        values: b.values?.slice(0,3)
+      })) || []
+    })
+  }
+
   return json(200, {
     apiKeySet: !!API_KEY,
     today:    summarise(todayRes,    today),
     tomorrow: summarise(tomorrowRes, tomorrow),
     dayAfter: summarise(dayAfterRes, dayAfter),
+    oddsSample: oddsResults,
   })
 }
