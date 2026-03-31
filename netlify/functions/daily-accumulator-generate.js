@@ -25,8 +25,22 @@ const TARGET_MIN = 1.80
 const TARGET_MAX = 1.90
 const ODDS_MIN   = 1.05
 const ODDS_MAX   = 1.55
-const PROB_MIN   = 0.64
-const LEAGUE_IDS = new Set([39,140,78,135,61,2,3,197,529,94])
+const PROB_MIN   = 0.60
+// All leagues seen in API responses — covers international breaks and off-season periods
+const LEAGUE_IDS = new Set([
+  // Top European
+  39,140,78,135,61,2,3,848,88,94,40,179,203,144,197,235,
+  // Americas
+  71,72,128,239,240,250,253,257,268,269,324,370,
+  // Africa / Asia / Other
+  12,29,32,35,37,43,50,51,53,60,98,111,130,167,
+  187,200,276,289,322,339,363,
+  // Seen in today/tomorrow debug output
+  400,421,424,424,447,450,454,455,
+  568,567,577,578,579,580,581,
+  709,712,722,725,730,731,740,
+  850,872,891,906,968,1026,1070,1130,1183,1220,1223
+])
 
 const MARKET_LABELS = {
   'Match Winner':       '1X2 (Match Result)',
@@ -56,26 +70,40 @@ async function apiFetch(path) {
 }
 
 async function fetchFixtures() {
-  const today    = todayISO()
-  const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10)
-  let raw = await apiFetch(`/fixtures?date=${today}&timezone=UTC`)
-  if (!raw.length) raw = await apiFetch(`/fixtures?date=${tomorrow}&timezone=UTC`)
-  return raw
-    .filter(f => LEAGUE_IDS.has(f.league?.id) && f.fixture?.status?.short === 'NS')
-    .map(f => ({
-      id:     f.fixture.id,
-      home:   f.teams.home.name,
-      away:   f.teams.away.name,
-      league: f.league.name,
-    }))
+  const dates = [0, 1, 2].map(d => new Date(Date.now() + d * 86400000).toISOString().slice(0, 10))
+  let raw = []
+  for (const date of dates) {
+    const fetched = await apiFetch(`/fixtures?date=${date}&timezone=UTC`)
+    const filtered = fetched.filter(f => LEAGUE_IDS.has(f.league?.id) && f.fixture?.status?.short === 'NS')
+    if (filtered.length >= 3) { raw = filtered; break }
+    raw = [...raw, ...filtered]
+  }
+  // Fallback: if still empty, use any NS fixtures from today regardless of league
+  if (!raw.length) {
+    const today = todayISO()
+    const all = await apiFetch(`/fixtures?date=${today}&timezone=UTC`)
+    raw = all.filter(f => f.fixture?.status?.short === 'NS')
+    console.log(`[Acca] Fallback: using all leagues, ${raw.length} fixtures`)
+  }
+  return raw.map(f => ({
+    id:     f.fixture.id,
+    home:   f.teams.home.name,
+    away:   f.teams.away.name,
+    league: f.league.name,
+  }))
 }
 
 async function fetchOdds(fixtures) {
   const candidates = []
   for (const fix of fixtures.slice(0, 10)) {
     let data
+    // Try specific bookmaker first, fall back to any available bookmaker
     try { data = await apiFetch(`/odds?fixture=${fix.id}&bookmaker=8`) }
     catch { continue }
+    if (!data.length) {
+      try { data = await apiFetch(`/odds?fixture=${fix.id}`) }
+      catch { continue }
+    }
     if (!data.length) continue
     const bm = data[0]?.bookmakers?.[0]
     if (!bm) continue
