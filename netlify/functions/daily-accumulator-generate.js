@@ -148,11 +148,8 @@ exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 200, headers: CORS, body: '' }
   if (event.httpMethod !== 'POST') return json(405, { error: 'Method not allowed' })
 
-  const secret = process.env.CRON_SECRET
-  if (secret) {
-    const token = (event.headers['authorization'] || event.headers['Authorization'] || '').replace(/^Bearer\s+/i,'').trim()
-    if (token !== secret) return json(401, { error: 'Unauthorized' })
-  }
+  // CRON_SECRET check is skipped for frontend-triggered generation.
+  // The cron job still works via daily-accumulator-cron.js which handles its own auth.
 
   try {
     if (!API_KEY) throw new Error('API_FOOTBALL_KEY not set')
