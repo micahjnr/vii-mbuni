@@ -21,11 +21,11 @@ const API_KEY    = process.env.API_FOOTBALL_KEY
 const API_BASE   = 'https://v3.football.api-sports.io'
 const SB_URL     = process.env.SUPABASE_URL
 const SB_KEY     = process.env.SUPABASE_SERVICE_ROLE_KEY
-const TARGET_MIN = 1.80
-const TARGET_MAX = 1.90
+const TARGET_MIN = 1.50   // lowered so we can build accas on quiet days
+const TARGET_MAX = 2.50   // widened upper band
 const ODDS_MIN   = 1.05
-const ODDS_MAX   = 1.55
-const PROB_MIN   = 0.60
+const ODDS_MAX   = 2.20   // accept higher individual odds
+const PROB_MIN   = 0.45   // lowered from 0.60
 // All leagues seen in API responses — covers international breaks and off-season periods
 const LEAGUE_IDS = new Set([
   // Top European
@@ -95,7 +95,7 @@ async function fetchFixtures() {
 
 async function fetchOdds(fixtures) {
   const candidates = []
-  for (const fix of fixtures.slice(0, 10)) {
+  for (const fix of fixtures.slice(0, 20)) {
     let data
     // Try specific bookmaker first, fall back to any available bookmaker
     try { data = await apiFetch(`/odds?fixture=${fix.id}&bookmaker=8`) }
