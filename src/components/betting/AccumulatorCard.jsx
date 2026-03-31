@@ -110,16 +110,14 @@ export default function AccumulatorCard({ showAdminControls = false }) {
         <p className="font-bold text-gray-800 dark:text-white text-sm">No accumulator yet today</p>
         <p className="text-xs text-gray-400 mt-0.5">Check back later or generate one now.</p>
       </div>
-      {showAdminControls && (
-        <button
-          onClick={() => generate.mutate()}
-          disabled={generate.isPending}
-          className="btn-primary text-xs px-4 py-2 gap-1.5 flex items-center"
-        >
-          <RefreshCw size={13} className={generate.isPending ? 'animate-spin' : ''} />
-          {generate.isPending ? 'Generating…' : 'Generate Accumulator'}
-        </button>
-      )}
+      <button
+        onClick={() => generate.mutate()}
+        disabled={generate.isPending}
+        className="btn-primary text-xs px-4 py-2 gap-1.5 flex items-center"
+      >
+        <RefreshCw size={13} className={generate.isPending ? 'animate-spin' : ''} />
+        {generate.isPending ? 'Generating…' : 'Generate Accumulator'}
+      </button>
     </div>
   )
 
