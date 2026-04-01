@@ -105,7 +105,7 @@ function StatusBadge({ status }) {
 }
 
 // ── Empty state ───────────────────────────────────────────────────
-function EmptyState({ onGenerate, isPending }) {
+function EmptyState({ onGenerate, isPending, error }) {
   return (
     <div className="relative overflow-hidden rounded-2xl border border-white/8"
       style={{ background: 'linear-gradient(145deg, #0f0f1a 0%, #13131f 100%)' }}>
@@ -115,17 +115,23 @@ function EmptyState({ onGenerate, isPending }) {
       <div className="relative flex flex-col items-center gap-4 p-10 text-center">
         <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl"
           style={{ background: 'linear-gradient(135deg, #6366f120, #8b5cf620)', border: '1px solid #6366f130' }}>
-          🎯
+          {error ? '⚠️' : '🎯'}
         </div>
         <div>
-          <p className="font-black text-white text-base tracking-wide">No Acca Yet Today</p>
-          <p className="text-xs text-white/40 mt-1 font-medium">Our AI is ready to build today's picks</p>
+          <p className="font-black text-white text-base tracking-wide">
+            {error ? 'Generation Failed' : 'No Acca Yet Today'}
+          </p>
+          <p className="text-xs text-white/40 mt-1 font-medium">
+            {error
+              ? error
+              : 'Our AI is ready to build today\'s picks'}
+          </p>
         </div>
         <button onClick={onGenerate} disabled={isPending}
           className="flex items-center gap-2 px-6 py-2.5 rounded-xl font-black text-sm text-white transition-all active:scale-95"
           style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', boxShadow: '0 0 20px #6366f140' }}>
           <RefreshCw size={14} className={isPending ? 'animate-spin' : ''}/>
-          {isPending ? 'Building Picks…' : 'Generate Accumulator'}
+          {isPending ? 'Building Picks…' : error ? 'Try Again' : 'Generate Accumulator'}
         </button>
       </div>
     </div>
@@ -139,6 +145,7 @@ export default function AccumulatorCard({ showAdminControls = false }) {
   const generate = useGenerateAccumulator()
   const updateResult = useUpdateAccumulatorResult()
   const [analysisOpen, setAnalysisOpen] = useState(false)
+  const [lastError, setLastError] = useState(null)
 
   if (isLoading) return (
     <div className="rounded-2xl border border-white/8 overflow-hidden animate-pulse"
@@ -150,7 +157,13 @@ export default function AccumulatorCard({ showAdminControls = false }) {
     </div>
   )
 
-  if (!acca) return <EmptyState onGenerate={() => generate.mutate()} isPending={generate.isPending}/>
+  if (!acca) return (
+    <EmptyState
+      onGenerate={() => { setLastError(null); generate.mutate(undefined, { onError: (e) => setLastError(e.message) }) }}
+      isPending={generate.isPending}
+      error={lastError}
+    />
+  )
 
   const isFinalised = acca.status !== 'pending'
 
