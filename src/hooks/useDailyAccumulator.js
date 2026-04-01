@@ -48,7 +48,7 @@ export function useDailyAccumulator(date) {
   return useQuery({
     queryKey: ['daily-accumulator', date ?? 'today'],
     queryFn:  () => fetchAccumulator(date),
-    staleTime: 1000 * 60 * 10,   // 10 min
+    staleTime: 0,         // always refetch on mount so generated acca shows immediately
     retry:     1,
   })
 }
