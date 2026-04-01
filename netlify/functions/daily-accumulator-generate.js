@@ -55,7 +55,7 @@ function todayISO() { return new Date().toISOString().slice(0, 10) }
 function db() { return createClient(SB_URL, SB_KEY) }
 
 async function fetchOddsForSport(sport) {
-  const url = `${ODDS_BASE}/sports/${sport}/odds/?apiKey=${ODDS_API_KEY}&regions=eu&markets=h2h&oddsFormat=decimal&dateFormat=iso`
+  const url = `${ODDS_BASE}/sports/${sport}/odds/?apiKey=${ODDS_API_KEY}&regions=eu&markets=h2h,totals,btts&oddsFormat=decimal&dateFormat=iso`
   const res = await fetch(url)
   const remaining = res.headers.get('x-requests-remaining')
   console.log(`[OddsAPI] ${sport} | remaining: ${remaining}`)
@@ -71,28 +71,39 @@ function extractCandidates(games, sport) {
   const out   = []
   const leagueName = sport.replace('soccer_', '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 
+  const MARKET_LABELS = { h2h: '1X2', totals: 'Over/Under', btts: 'Both Teams To Score' }
+
   for (const game of (games || [])) {
     const commenceMs = new Date(game.commence_time).getTime()
     if (commenceMs < now || commenceMs > in48h) continue
-    const h2hBook   = game.bookmakers?.find(b => b.markets?.find(m => m.key === 'h2h'))
-    if (!h2hBook) continue
-    const h2hMarket = h2hBook.markets.find(m => m.key === 'h2h')
-    if (!h2hMarket) continue
+    const matchLabel = `${game.home_team} vs ${game.away_team}`
 
-    for (const outcome of h2hMarket.outcomes) {
-      const odds = parseFloat(outcome.price)
-      if (isNaN(odds) || odds < ODDS_MIN || odds > ODDS_MAX) continue
-      const prob = parseFloat((1 / odds).toFixed(4))
-      if (prob < PROB_MIN) continue
-      out.push({
-        matchId: game.id,
-        match:   `${game.home_team} vs ${game.away_team}`,
-        league:  leagueName,
-        market:  '1X2 (Match Result)',
-        pick:    outcome.name,
-        odds,
-        prob,
-      })
+    for (const bk of (game.bookmakers || [])) {
+      for (const mkt of (bk.markets || [])) {
+        const marketLabel = MARKET_LABELS[mkt.key]
+        if (!marketLabel) continue
+        for (const outcome of (mkt.outcomes || [])) {
+          const odds = parseFloat(outcome.price)
+          if (isNaN(odds) || odds < ODDS_MIN || odds > ODDS_MAX) continue
+          const prob = parseFloat((1 / odds).toFixed(4))
+          if (prob < PROB_MIN) continue
+          // Format pick label nicely
+          let pick = outcome.name
+          if (mkt.key === 'totals') pick = `${outcome.name} ${outcome.point} Goals`
+          if (mkt.key === 'btts') pick = outcome.name === 'Yes' ? 'Both Teams Score' : 'Not Both Teams Score'
+          out.push({
+            matchId: `${game.id}::${mkt.key}`,
+            gameId:  game.id,
+            match:   matchLabel,
+            league:  leagueName,
+            market:  marketLabel,
+            pick,
+            odds,
+            prob,
+          })
+        }
+      }
+      break // only use first bookmaker per game to avoid duplicate candidates
     }
   }
   return out
@@ -123,7 +134,7 @@ function score(c) { return c.prob }
 function buildAccu(candidates) {
   const pool = [...candidates].sort((a, b) => score(b) - score(a)).slice(0, 40)
   const co = picks => parseFloat(picks.reduce((a, p) => a * p.odds, 1).toFixed(3))
-  const valid = picks => new Set(picks.map(p => p.matchId)).size === picks.length
+  const valid = picks => new Set(picks.map(p => p.gameId || p.matchId)).size === picks.length
 
   // Try 3-folds first
   for (let i = 0; i < pool.length - 2; i++)
@@ -179,6 +190,8 @@ exports.handler = async (event) => {
       if (!acc[key] || score(c) > score(acc[key])) acc[key] = c
       return acc
     }, {}))
+    // Ensure no two picks from the same actual game
+    // (matchId includes market key, gameId is the raw game id)
 
     const result = buildAccu(deduped)
     if (!result) throw new Error('Could not build a valid accumulator from available picks.')
@@ -188,7 +201,7 @@ exports.handler = async (event) => {
     const leagues    = [...new Set(result.selections.map(s => s.league))].join(', ')
     const analysis   = `This ${result.selections.length}-fold accumulator covers ${leagues}. Average implied probability: ${(avgProb * 100).toFixed(0)}%. Combined odds: ${result.total_odds.toFixed(2)}. Confidence: ${confidence}/100. Stake responsibly.`
 
-    const cleanSels = result.selections.map(({ matchId, prob, ...sel }) => ({ ...sel, probability: prob }))
+    const cleanSels = result.selections.map(({ matchId, gameId, prob, ...sel }) => ({ ...sel, probability: prob }))
 
     const { data: saved, error } = await db()
       .from('daily_accumulators')
