@@ -51,7 +51,12 @@ const SPORTS = [
 ]
 const BATCH_SIZE = 6  // fetch 6 sports at once in parallel
 
-function todayISO() { return new Date().toISOString().slice(0, 10) }
+function todayISO() {
+  // Nigeria is UTC+1 — use Africa/Lagos time so acca date matches local day
+  const now = new Date()
+  const lag = new Date(now.toLocaleString('en-US', { timeZone: 'Africa/Lagos' }))
+  return `${lag.getFullYear()}-${String(lag.getMonth()+1).padStart(2,'0')}-${String(lag.getDate()).padStart(2,'0')}`
+}
 function db() { return createClient(SB_URL, SB_KEY) }
 
 async function fetchOddsForSport(sport) {
@@ -67,8 +72,9 @@ async function fetchOddsForSport(sport) {
 
 function extractCandidates(games, sport) {
   const now      = Date.now()
+  // End of day in Nigeria time (UTC+1)
   const todayEnd = new Date()
-  todayEnd.setUTCHours(23, 59, 59, 999)
+  todayEnd.setUTCHours(22, 59, 59, 999) // 23:59 Lagos = 22:59 UTC
   const out      = []
   const leagueName = sport.replace('soccer_', '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 
