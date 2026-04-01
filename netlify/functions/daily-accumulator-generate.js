@@ -66,16 +66,18 @@ async function fetchOddsForSport(sport) {
 }
 
 function extractCandidates(games, sport) {
-  const now   = Date.now()
-  const in48h = now + 48 * 60 * 60 * 1000
-  const out   = []
+  const now      = Date.now()
+  const todayEnd = new Date()
+  todayEnd.setUTCHours(23, 59, 59, 999)
+  const out      = []
   const leagueName = sport.replace('soccer_', '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 
   const MARKET_LABELS = { h2h: '1X2', totals: 'Over/Under', btts: 'Both Teams To Score' }
 
   for (const game of (games || [])) {
     const commenceMs = new Date(game.commence_time).getTime()
-    if (commenceMs < now || commenceMs > in48h) continue
+    // Today's fixtures only — no tomorrow, no days ahead
+    if (commenceMs < now || commenceMs > todayEnd.getTime()) continue
     const matchLabel = `${game.home_team} vs ${game.away_team}`
 
     for (const bk of (game.bookmakers || [])) {
