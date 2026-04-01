@@ -9,7 +9,10 @@ const BASE = import.meta.env.DEV
 
 // ── Fetch today's accumulator — direct Supabase query (avoids Netlify function 405) ──
 async function fetchAccumulator(date) {
-  const today = date || new Date().toISOString().slice(0, 10)
+  // Use local date not UTC so Nigerian users (UTC+1) get today's acca not yesterday's
+  const now = new Date()
+  const localDate = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`
+  const today = date || localDate
   const { data, error } = await sb
     .from('daily_accumulators')
     .select('*')
