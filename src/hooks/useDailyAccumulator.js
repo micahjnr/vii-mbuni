@@ -1,18 +1,22 @@
 // src/hooks/useDailyAccumulator.js
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
+import sb from '@/lib/supabase'
 
 const BASE = import.meta.env.DEV
   ? 'http://localhost:8888/.netlify/functions'
   : '/.netlify/functions'
 
-// ── Fetch today's accumulator ─────────────────────────────────────
+// ── Fetch today's accumulator — direct Supabase query (avoids Netlify function 405) ──
 async function fetchAccumulator(date) {
-  const url = `${BASE}/daily-accumulator-get${date ? `?date=${date}` : ''}`
-  const res = await fetch(url)
-  if (res.status === 404) return null  // no acca today — not an error
-  if (!res.ok) throw new Error(`Failed to load accumulator (${res.status})`)
-  return res.json()
+  const today = date || new Date().toISOString().slice(0, 10)
+  const { data, error } = await sb
+    .from('daily_accumulators')
+    .select('*')
+    .eq('date', today)
+    .maybeSingle()
+  if (error) throw new Error(error.message)
+  return data || null
 }
 
 // ── Trigger generation (admin / manual) ──────────────────────────
