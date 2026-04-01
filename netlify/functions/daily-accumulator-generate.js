@@ -28,7 +28,7 @@ const ODDS_MIN   = 1.10
 const ODDS_MAX   = 2.20
 const PROB_MIN   = 0.45
 
-// Sports to pull odds from
+// Sports to pull odds from — ordered by priority, fetched in parallel batches
 const SPORTS = [
   'soccer_epl',
   'soccer_spain_la_liga',
@@ -38,10 +38,6 @@ const SPORTS = [
   'soccer_uefa_champs_league',
   'soccer_uefa_europa_league',
   'soccer_efl_champ',
-  'soccer_spain_segunda_division',
-  'soccer_germany_bundesliga2',
-  'soccer_italy_serie_b',
-  'soccer_france_ligue_two',
   'soccer_netherlands_eredivisie',
   'soccer_portugal_primeira_liga',
   'soccer_turkey_super_league',
@@ -49,15 +45,11 @@ const SPORTS = [
   'soccer_brazil_campeonato',
   'soccer_argentina_primera_division',
   'soccer_mls',
-  'soccer_norway_eliteserien',
-  'soccer_sweden_allsvenskan',
   'soccer_scotland_premiership',
   'soccer_mexico_ligamx',
-  'soccer_japan_j_league',
-  'soccer_usa_mls',
-  'soccer_africa_cup_of_nations',
-  'soccer_conmebol_copa_libertadores',
+  'soccer_norway_eliteserien',
 ]
+const BATCH_SIZE = 6  // fetch 6 sports at once in parallel
 
 function todayISO() { return new Date().toISOString().slice(0, 10) }
 function db() { return createClient(SB_URL, SB_KEY) }
@@ -73,52 +65,54 @@ async function fetchOddsForSport(sport) {
   return res.json()
 }
 
+function extractCandidates(games, sport) {
+  const now   = Date.now()
+  const in48h = now + 48 * 60 * 60 * 1000
+  const out   = []
+  const leagueName = sport.replace('soccer_', '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+
+  for (const game of (games || [])) {
+    const commenceMs = new Date(game.commence_time).getTime()
+    if (commenceMs < now || commenceMs > in48h) continue
+    const h2hBook   = game.bookmakers?.find(b => b.markets?.find(m => m.key === 'h2h'))
+    if (!h2hBook) continue
+    const h2hMarket = h2hBook.markets.find(m => m.key === 'h2h')
+    if (!h2hMarket) continue
+
+    for (const outcome of h2hMarket.outcomes) {
+      const odds = parseFloat(outcome.price)
+      if (isNaN(odds) || odds < ODDS_MIN || odds > ODDS_MAX) continue
+      const prob = parseFloat((1 / odds).toFixed(4))
+      if (prob < PROB_MIN) continue
+      out.push({
+        matchId: game.id,
+        match:   `${game.home_team} vs ${game.away_team}`,
+        league:  leagueName,
+        market:  '1X2 (Match Result)',
+        pick:    outcome.name,
+        odds,
+        prob,
+      })
+    }
+  }
+  return out
+}
+
 async function fetchAllCandidates() {
-  const now      = Date.now()
-  const in48h    = now + 48 * 60 * 60 * 1000
   const candidates = []
 
-  for (const sport of SPORTS) {
-    let games
-    try { games = await fetchOddsForSport(sport) }
-    catch (e) {
-      console.warn(`[OddsAPI] skipping ${sport}: ${e.message}`)
-      continue
-    }
-    if (!Array.isArray(games)) continue
-
-    for (const game of games) {
-      // Only fixtures in next 48 hours
-      const commenceMs = new Date(game.commence_time).getTime()
-      if (commenceMs < now || commenceMs > in48h) continue
-
-      const matchLabel = `${game.home_team} vs ${game.away_team}`
-      const leagueName = sport.replace('soccer_', '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
-
-      // Find best bookmaker h2h odds
-      const h2hBook = game.bookmakers?.find(b => b.markets?.find(m => m.key === 'h2h'))
-      if (!h2hBook) continue
-      const h2hMarket = h2hBook.markets.find(m => m.key === 'h2h')
-      if (!h2hMarket) continue
-
-      for (const outcome of h2hMarket.outcomes) {
-        const odds = parseFloat(outcome.price)
-        if (isNaN(odds) || odds < ODDS_MIN || odds > ODDS_MAX) continue
-        const prob = parseFloat((1 / odds).toFixed(4))
-        if (prob < PROB_MIN) continue
-        candidates.push({
-          matchId: game.id,
-          match:   matchLabel,
-          league:  leagueName,
-          market:  '1X2 (Match Result)',
-          pick:    outcome.name,
-          odds,
-          prob,
-        })
+  // Fetch in parallel batches to stay within Netlify's 10s timeout
+  for (let i = 0; i < SPORTS.length; i += BATCH_SIZE) {
+    const batch = SPORTS.slice(i, i + BATCH_SIZE)
+    const results = await Promise.allSettled(batch.map(s => fetchOddsForSport(s)))
+    for (let j = 0; j < batch.length; j++) {
+      if (results[j].status === 'fulfilled') {
+        candidates.push(...extractCandidates(results[j].value, batch[j]))
+      } else {
+        console.warn(`[OddsAPI] skipping ${batch[j]}: ${results[j].reason?.message}`)
       }
     }
-
-    if (candidates.length >= 30) break // enough to build a good acca
+    if (candidates.length >= 30) break
   }
 
   return candidates
