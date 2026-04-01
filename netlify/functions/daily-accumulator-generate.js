@@ -22,11 +22,11 @@ const ODDS_BASE    = 'https://api.the-odds-api.com/v4'
 const SB_URL       = process.env.SUPABASE_URL
 const SB_KEY       = process.env.SUPABASE_SERVICE_ROLE_KEY
 
-const TARGET_MIN = 1.50
-const TARGET_MAX = 2.50
-const ODDS_MIN   = 1.10
-const ODDS_MAX   = 2.20
-const PROB_MIN   = 0.45
+const TARGET_MIN = 1.40
+const TARGET_MAX = 3.00
+const ODDS_MIN   = 1.05
+const ODDS_MAX   = 2.50
+const PROB_MIN   = 0.40
 
 // Sports to pull odds from — ordered by priority, fetched in parallel batches
 const SPORTS = [
@@ -48,8 +48,17 @@ const SPORTS = [
   'soccer_scotland_premiership',
   'soccer_mexico_ligamx',
   'soccer_norway_eliteserien',
+  'soccer_sweden_allsvenskan',
+  'soccer_austria_bundesliga',
+  'soccer_greece_super_league',
+  'soccer_denmark_superliga',
+  'soccer_switzerland_superleague',
+  'soccer_czech_liga',
+  'soccer_poland_ekstraklasa',
+  'soccer_russia_premier_league',
+  'soccer_south_africa_premier_division',
 ]
-const BATCH_SIZE = 6  // fetch 6 sports at once in parallel
+const BATCH_SIZE = 9  // fetch 6 sports at once in parallel
 
 function todayISO() {
   // Nigeria is UTC+1 — use Africa/Lagos time so acca date matches local day
@@ -72,9 +81,8 @@ async function fetchOddsForSport(sport) {
 
 function extractCandidates(games, sport) {
   const now      = Date.now()
-  // End of day in Nigeria time (UTC+1)
-  const todayEnd = new Date()
-  todayEnd.setUTCHours(22, 59, 59, 999) // 23:59 Lagos = 22:59 UTC
+  // Include next 48h window so quiet fixture days still yield picks
+  const windowEnd = new Date(now + 48 * 60 * 60 * 1000)
   const out      = []
   const leagueName = sport.replace('soccer_', '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 
@@ -82,8 +90,8 @@ function extractCandidates(games, sport) {
 
   for (const game of (games || [])) {
     const commenceMs = new Date(game.commence_time).getTime()
-    // Today's fixtures only — no tomorrow, no days ahead
-    if (commenceMs < now || commenceMs > todayEnd.getTime()) continue
+    // Next 48h fixtures — includes today and tomorrow
+    if (commenceMs < now || commenceMs > windowEnd.getTime()) continue
     const matchLabel = `${game.home_team} vs ${game.away_team}`
 
     for (const bk of (game.bookmakers || [])) {
@@ -190,7 +198,14 @@ exports.handler = async (event) => {
     const raw = await fetchAllCandidates()
     console.log(`[Acca] ${raw.length} raw candidates`)
 
-    if (raw.length < 2) throw new Error(`Only ${raw.length} qualifying picks found (need ≥2). Check API key quota or try again tomorrow.`)
+    console.log(`[Acca] Sports fetched: ${SPORTS.length}, raw candidates: ${raw.length}`)
+    if (raw.length < 2) throw new Error(
+      `Only ${raw.length} qualifying picks found (need ≥2). ` +
+      `Possible causes: (1) THE_ODDS_API_KEY quota exhausted — check dashboard.the-odds-api.com, ` +
+      `(2) No upcoming fixtures in the next 48h for target leagues, ` +
+      `(3) Odds outside the ${ODDS_MIN}–${ODDS_MAX} filter range. ` +
+      `Remaining quota is logged above each sport fetch.`
+    )
 
     // Dedup: best prob per matchId
     const deduped = Object.values(raw.reduce((acc, c) => {
