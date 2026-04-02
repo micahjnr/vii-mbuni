@@ -7,7 +7,7 @@ const BASE = import.meta.env.DEV
   ? 'http://localhost:8888/.netlify/functions'
   : '/.netlify/functions'
 
-// ── Fetch today's accumulator — direct Supabase query (avoids Netlify function 405) ──
+// ── Fetch today's accumulator — direct Supabase query ────────────
 async function fetchAccumulator(date) {
   const today = date || new Date().toISOString().slice(0, 10)
   const { data, error } = await sb
@@ -19,17 +19,15 @@ async function fetchAccumulator(date) {
   return data || null
 }
 
-// ── Trigger generation (admin / manual) ──────────────────────────
+// ── Trigger generation ────────────────────────────────────────────
 async function triggerGenerate() {
   const res = await fetch(`${BASE}/daily-accumulator-generate`, {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
   })
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}))
-    throw new Error(body.error || `Generation failed (${res.status})`)
-  }
-  return res.json()
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(body.error || `Generation failed (${res.status})`)
+  return body
 }
 
 // ── Update result ─────────────────────────────────────────────────
@@ -39,11 +37,9 @@ async function patchResult({ id, status }) {
     headers: { 'Content-Type': 'application/json' },
     body:    JSON.stringify({ status }),
   })
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}))
-    throw new Error(body.error || `Update failed (${res.status})`)
-  }
-  return res.json()
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(body.error || `Update failed (${res.status})`)
+  return body
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -52,8 +48,9 @@ export function useDailyAccumulator(date) {
   return useQuery({
     queryKey: ['daily-accumulator', date ?? 'today'],
     queryFn:  () => fetchAccumulator(date),
-    staleTime: 0,         // always refetch on mount so generated acca shows immediately
+    staleTime: 0,
     retry:     1,
+    refetchOnWindowFocus: true,
   })
 }
 
@@ -61,9 +58,16 @@ export function useGenerateAccumulator() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: triggerGenerate,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['daily-accumulator'] })
-      toast.success('New accumulator generated!')
+    onSuccess: (data) => {
+      // If the server returned the full acca record, inject it directly into
+      // the cache so the UI updates instantly without waiting for a refetch.
+      if (data?.id && data?.selections) {
+        qc.setQueryData(['daily-accumulator', 'today'], data)
+      } else {
+        // "Already generated today" — force a fresh fetch from Supabase
+        qc.refetchQueries({ queryKey: ['daily-accumulator'] })
+      }
+      toast.success('Accumulator ready!')
     },
     onError: (err) => toast.error(err.message),
   })
@@ -75,6 +79,7 @@ export function useUpdateAccumulatorResult() {
     mutationFn: patchResult,
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['daily-accumulator'] })
+      qc.refetchQueries({ queryKey: ['daily-accumulator'] })
       toast.success(`Marked as ${data.status === 'won' ? '✅ Won' : '❌ Lost'}`)
     },
     onError: (err) => toast.error(err.message),
