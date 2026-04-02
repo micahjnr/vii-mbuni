@@ -159,7 +159,12 @@ export default function AccumulatorCard({ showAdminControls = false }) {
 
   if (!acca) return (
     <EmptyState
-      onGenerate={() => { setLastError(null); generate.mutate(undefined, { onError: (e) => setLastError(e.message) }) }}
+      onGenerate={() => {
+        setLastError(null)
+        generate.mutate(undefined, {
+          onError: (e) => setLastError(e.message),
+        })
+      }}
       isPending={generate.isPending}
       error={lastError}
     />
