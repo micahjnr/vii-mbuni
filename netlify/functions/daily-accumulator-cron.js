@@ -48,7 +48,9 @@ async function run() {
     if (!data.length) continue
     const bm = data[0]?.bookmakers?.[0]; if (!bm) continue
     const ml = `${fix.home} vs ${fix.away}`
+    const EXCL = new Set(['Asian Handicap','Asian Handicap First Half','Asian Handicap Second Half'])
     for (const bet of (bm.bets||[])) {
+      if (EXCL.has(bet.name)) continue
       const mkt = MARKET_LABELS[bet.name]||bet.name
       for (const val of (bet.values||[])) {
         const odds=parseFloat(val.odd); if(isNaN(odds)||odds<ODDS_MIN||odds>ODDS_MAX) continue
