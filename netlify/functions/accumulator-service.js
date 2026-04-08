@@ -206,11 +206,18 @@ function combinedOdds(picks) {
   return parseFloat(picks.reduce((acc, p) => acc * p.odds, 1).toFixed(3))
 }
 
+// unique games AND at least 2 different markets for 3-folds
 function validCombo(picks) {
   const ids = picks.map(p => p.matchId)
   if (new Set(ids).size !== ids.length) return false
-  if (picks.length === 3 && new Set(picks.map(p => p.market)).size === 1) return false
+  if (picks.length >= 3 && new Set(picks.map(p => p.market)).size < 2) return false
   return true
+}
+
+// unique games only (relaxed — no market requirement)
+function validGamesOnly(picks) {
+  const ids = picks.map(p => p.matchId)
+  return new Set(ids).size === ids.length
 }
 
 function buildAccumulator(candidates) {
@@ -220,7 +227,7 @@ function buildAccumulator(candidates) {
 
   const pool = scored.slice(0, 40)
 
-  // Try 3-folds first
+  // ── Pass 1: 3-folds in target band with mixed markets ──────────────
   for (let i = 0; i < pool.length - 2; i++) {
     for (let j = i + 1; j < pool.length - 1; j++) {
       if (pool[i].odds * pool[j].odds * PICK_ODDS_MIN > TARGET_MAX) continue
@@ -233,17 +240,39 @@ function buildAccumulator(candidates) {
     }
   }
 
-  // Fall back to 2-folds
-  for (let i = 0; i < pool.length - 1; i++) {
-    for (let j = i + 1; j < pool.length; j++) {
-      const pair = [pool[i], pool[j]]
-      if (!validCombo(pair)) continue
-      const total = combinedOdds(pair)
-      if (total >= TARGET_MIN && total <= TARGET_MAX) return { selections: pair, total_odds: total }
+  // ── Pass 2: 3-folds in target band, relax market mixing ────────────
+  for (let i = 0; i < pool.length - 2; i++) {
+    for (let j = i + 1; j < pool.length - 1; j++) {
+      if (pool[i].odds * pool[j].odds * PICK_ODDS_MIN > TARGET_MAX) continue
+      for (let k = j + 1; k < pool.length; k++) {
+        const trio = [pool[i], pool[j], pool[k]]
+        if (!validGamesOnly(trio)) continue
+        const total = combinedOdds(trio)
+        if (total >= TARGET_MIN && total <= TARGET_MAX) return { selections: trio, total_odds: total }
+      }
     }
   }
 
-  return null
+  // ── Pass 3: Best 3-fold closest to target midpoint — NEVER 2-fold ──
+  const midTarget = (TARGET_MIN + TARGET_MAX) / 2
+  let bestMixed = null, bestMixedDist = Infinity
+  let bestAny   = null, bestAnyDist   = Infinity
+
+  for (let i = 0; i < pool.length - 2; i++) {
+    for (let j = i + 1; j < pool.length - 1; j++) {
+      for (let k = j + 1; k < pool.length; k++) {
+        const trio = [pool[i], pool[j], pool[k]]
+        if (!validGamesOnly(trio)) continue
+        const total = combinedOdds(trio)
+        const dist  = Math.abs(total - midTarget)
+        if (dist < bestAnyDist) { bestAny = { selections: trio, total_odds: total }; bestAnyDist = dist }
+        if (validCombo(trio) && dist < bestMixedDist) { bestMixed = { selections: trio, total_odds: total }; bestMixedDist = dist }
+      }
+    }
+  }
+
+  // Always return a 3-fold — prefer mixed markets
+  return bestMixed || bestAny || null
 }
 
 function buildAnalysis(selections, total_odds, confidence) {
@@ -301,9 +330,9 @@ async function generateDailyAccumulator() {
     }, {})
   )
 
-  if (deduped.length < 2) {
+  if (deduped.length < 3) {
     throw new Error(
-      `Only ${deduped.length} qualifying picks found (need ≥ 2). ` +
+      `Only ${deduped.length} qualifying picks found (need ≥ 3 for a 3-fold accumulator). ` +
       'Possible reasons: no matches today, bookmaker 8 (Bet365) has no odds yet, or thresholds too strict.'
     )
   }
