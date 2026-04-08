@@ -1,6 +1,8 @@
 // netlify/functions/daily-accumulator-result.js
 // PATCH /.netlify/functions/daily-accumulator-result?id=<uuid>
-// Body: { "status": "won" | "lost" }
+// Body: { "status": "won" | "lost" }             <- mark result
+//    OR { "booking_code": "ABC123" }              <- save SportyBet booking code
+//    OR { "status": "won", "booking_code": "X" }  <- both at once
 
 const { createClient } = require('@supabase/supabase-js')
 
@@ -32,12 +34,27 @@ exports.handler = async (event) => {
   let body
   try { body = JSON.parse(event.body || '{}') } catch { return json(400, { error: 'Invalid JSON' }) }
 
-  const { status } = body
-  if (!['won', 'lost'].includes(status)) return json(400, { error: 'status must be "won" or "lost"' })
+  const { status, booking_code } = body
+
+  if (!status && booking_code === undefined) {
+    return json(400, { error: 'Body must include "status" and/or "booking_code"' })
+  }
+  if (status && !['won', 'lost'].includes(status)) {
+    return json(400, { error: 'status must be "won" or "lost"' })
+  }
+
+  const updates = {}
+  if (status)                     updates.status       = status
+  if (booking_code !== undefined) updates.booking_code = booking_code.trim().toUpperCase()
 
   try {
     const db = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
-    const { data, error } = await db.from('daily_accumulators').update({ status }).eq('id', id).select().single()
+    const { data, error } = await db
+      .from('daily_accumulators')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single()
     if (error) return json(500, { error: error.message })
     if (!data)  return json(404, { error: `Accumulator ${id} not found` })
     return json(200, data)
