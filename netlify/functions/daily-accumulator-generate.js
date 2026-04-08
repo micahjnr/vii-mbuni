@@ -42,8 +42,8 @@ const SB_KEY           = process.env.SUPABASE_SERVICE_ROLE_KEY
 const TARGET_MIN = 1.70   // target 1.70–2.00 daily acca
 const TARGET_MAX = 2.00
 const PICK_MIN   = 1.15
-const PICK_MAX   = 1.55   // cap per-pick so 2-folds can land in 1.70–2.00 (1.55×1.55=2.40 max)
-const PROB_MIN   = 0.60   // ~1.67 implied odds → keeps picks confident (≥60% win prob)
+const PICK_MAX   = 1.65   // cap per-pick so 2-folds can land in 1.70–2.00 (1.55×1.55=2.40 max)
+const PROB_MIN   = 0.55   // ~1.67 implied odds → keeps picks confident (≥60% win prob)
 
 function todayISO() { return new Date().toISOString().slice(0, 10) }
 function db()       { return createClient(SB_URL, SB_KEY) }
