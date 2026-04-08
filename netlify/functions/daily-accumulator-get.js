@@ -21,9 +21,9 @@ const API_KEY    = process.env.API_FOOTBALL_KEY
 const API_BASE   = 'https://v3.football.api-sports.io'
 const SB_URL     = process.env.SUPABASE_URL
 const SB_KEY     = process.env.SUPABASE_SERVICE_ROLE_KEY
-const TARGET_MIN = 1.80
-const TARGET_MAX = 1.90
-const ODDS_MIN   = 1.05
+const TARGET_MIN = 1.70
+const TARGET_MAX = 2.00
+const ODDS_MIN   = 1.15
 const ODDS_MAX   = 1.55
 const PROB_MIN   = 0.60
 // Expanded leagues: PL, La Liga, Bundesliga, Serie A, Ligue 1, UCL, UEL, UECL,
@@ -143,7 +143,7 @@ function buildAccu(candidates) {
   // 3-folds
   for (let i=0;i<pool.length-2;i++)
     for (let j=i+1;j<pool.length-1;j++) {
-      if (pool[i].odds*pool[j].odds > TARGET_MAX) continue
+      if (pool[i].odds*pool[j].odds*ODDS_MIN > TARGET_MAX) continue
       for (let k=j+1;k<pool.length;k++) {
         const t=[pool[i],pool[j],pool[k]]
         if (!valid(t)) continue
@@ -201,7 +201,7 @@ exports.handler = async (event) => {
     const confidence = Math.min(85, Math.max(70, Math.round(avgProb*100)))
     const leagues    = [...new Set(result.selections.map(s=>s.league))].join(', ')
     const markets    = [...new Set(result.selections.map(s=>s.market))].join(' & ')
-    const analysis   = `This ${result.selections.length}-fold accumulator spans ${leagues}, combining picks across ${markets}. Average implied probability: ${(avgProb*100).toFixed(0)}%. Combined odds ${result.total_odds.toFixed(2)} sit in the 1.80–1.90 target band. Confidence: ${confidence}/100. Stake responsibly.`
+    const analysis   = `This ${result.selections.length}-fold accumulator spans ${leagues}, combining picks across ${markets}. Average implied probability: ${(avgProb*100).toFixed(0)}%. Combined odds ${result.total_odds.toFixed(2)} sit in the 1.70–2.00 target band. Confidence: ${confidence}/100. Stake responsibly.`
 
     const cleanSels = result.selections.map(({ matchId, prob, ...sel }) => ({ ...sel, probability: prob }))
 
