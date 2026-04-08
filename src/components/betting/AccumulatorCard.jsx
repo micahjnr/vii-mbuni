@@ -1,11 +1,19 @@
 // src/components/betting/AccumulatorCard.jsx
 import { useState } from 'react'
-import { useDailyAccumulator, useGenerateAccumulator, useUpdateAccumulatorResult } from '@/hooks/useDailyAccumulator'
+import {
+  useDailyAccumulator,
+  useGenerateAccumulator,
+  useUpdateAccumulatorResult,
+  useUpdateBookingCode,
+} from '@/hooks/useDailyAccumulator'
 import { useAuthStore } from '@/store'
-import { RefreshCw, TrendingUp, Trophy, XCircle, ChevronDown, ChevronUp, Zap, Target, Shield } from 'lucide-react'
+import {
+  RefreshCw, TrendingUp, Trophy, XCircle, ChevronDown, ChevronUp,
+  Zap, Target, Shield, Copy, Check, ExternalLink, Ticket,
+} from 'lucide-react'
 import clsx from 'clsx'
 
-// ── Market icon/color map ─────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────
 function marketStyle(market) {
   if (market?.includes('Over') || market?.includes('Under') || market?.includes('Goals'))
     return { color: '#f59e0b', bg: 'rgba(245,158,11,0.12)', label: '⚽' }
@@ -14,10 +22,12 @@ function marketStyle(market) {
   return { color: '#3b82f6', bg: 'rgba(59,130,246,0.12)', label: '🏆' }
 }
 
+const SPORTYBET_LOAD_URL = (code) =>
+  `https://www.sportybet.com/ng/m/load_code?bookingCode=${code}`
+
 // ── Confidence arc ────────────────────────────────────────────────
 function ConfidenceArc({ value }) {
-  const r = 28
-  const circ = 2 * Math.PI * r
+  const r = 28, circ = 2 * Math.PI * r
   const fill = ((value / 100) * circ).toFixed(1)
   const color = value >= 80 ? '#22c55e' : value >= 70 ? '#f59e0b' : '#ef4444'
   return (
@@ -38,22 +48,18 @@ function ConfidenceArc({ value }) {
   )
 }
 
-// ── Single selection ──────────────────────────────────────────────
+// ── Single selection row ──────────────────────────────────────────
 function SelectionRow({ sel, index }) {
   const prob = Math.round(sel.probability * 100)
   const ms = marketStyle(sel.market)
   return (
     <div className="relative flex items-start gap-3 py-3.5 border-b border-white/5 last:border-0 group">
-      {/* glow line on hover */}
       <div className="absolute left-0 top-0 bottom-0 w-0.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
         style={{ background: ms.color }}/>
-
-      {/* index */}
       <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 text-xs font-black"
         style={{ background: ms.bg, color: ms.color, border: `1px solid ${ms.color}30` }}>
         {index + 1}
       </div>
-
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5 mb-0.5">
           <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: ms.color }}>
@@ -71,7 +77,6 @@ function SelectionRow({ sel, index }) {
           </span>
         </div>
       </div>
-
       <div className="flex flex-col items-end gap-1 flex-shrink-0 pl-2">
         <span className="text-xl font-black text-white tabular-nums">{sel.odds?.toFixed(2)}</span>
         <div className="flex items-center gap-1">
@@ -104,12 +109,142 @@ function StatusBadge({ status }) {
   )
 }
 
+// ── Booking Code Banner — shown to ALL users ──────────────────────
+function BookingCodeBanner({ code }) {
+  const [copied, setCopied] = useState(false)
+
+  function handleCopy() {
+    navigator.clipboard.writeText(code).catch(() => {
+      // fallback for older browsers / webview
+      const el = document.createElement('textarea')
+      el.value = code
+      document.body.appendChild(el)
+      el.select()
+      document.execCommand('copy')
+      document.body.removeChild(el)
+    })
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <div className="mx-4 mb-3 rounded-2xl overflow-hidden"
+      style={{
+        background: 'linear-gradient(135deg, rgba(16,185,129,0.12) 0%, rgba(5,150,105,0.08) 100%)',
+        border: '1px solid rgba(16,185,129,0.25)',
+      }}>
+      {/* Header label */}
+      <div className="flex items-center gap-2 px-4 pt-3 pb-1">
+        <Ticket size={13} className="text-emerald-400"/>
+        <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400">
+          SportyBet Booking Code
+        </span>
+      </div>
+
+      {/* Code + actions */}
+      <div className="flex items-center gap-2 px-4 pb-3">
+        {/* The code itself */}
+        <div className="flex-1 bg-black/30 rounded-xl px-4 py-2.5 border border-emerald-500/20">
+          <span className="text-2xl font-black tracking-[0.15em] text-white"
+            style={{ textShadow: '0 0 20px rgba(16,185,129,0.5)' }}>
+            {code}
+          </span>
+        </div>
+
+        {/* Copy button */}
+        <button
+          onClick={handleCopy}
+          title="Copy code"
+          className={clsx(
+            'w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 border transition-all active:scale-95',
+            copied
+              ? 'bg-emerald-500/30 border-emerald-400/40 text-emerald-300'
+              : 'bg-white/5 border-white/10 text-white/60 hover:bg-emerald-500/20 hover:border-emerald-400/30 hover:text-emerald-300'
+          )}>
+          {copied ? <Check size={16}/> : <Copy size={16}/>}
+        </button>
+
+        {/* Open SportyBet button */}
+        <a
+          href={SPORTYBET_LOAD_URL(code)}
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Open in SportyBet"
+          className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 border transition-all active:scale-95"
+          style={{
+            background: 'linear-gradient(135deg, #10b981, #059669)',
+            border: '1px solid rgba(16,185,129,0.4)',
+            boxShadow: '0 0 16px rgba(16,185,129,0.3)',
+          }}>
+          <ExternalLink size={16} className="text-white"/>
+        </a>
+      </div>
+
+      {/* Instruction */}
+      <div className="px-4 pb-3">
+        <p className="text-[10px] text-emerald-400/60 leading-relaxed">
+          Tap <strong className="text-emerald-400/80">copy</strong> to grab the code, or tap <strong className="text-emerald-400/80">open</strong> to load it directly in SportyBet.
+        </p>
+      </div>
+    </div>
+  )
+}
+
+// ── Admin: input to set/update the booking code ───────────────────
+function BookingCodeAdminInput({ accaId, currentCode }) {
+  const [input, setInput]     = useState(currentCode || '')
+  const [editing, setEditing] = useState(!currentCode)
+  const updateCode = useUpdateBookingCode()
+
+  function handleSave() {
+    const trimmed = input.trim().toUpperCase()
+    if (!trimmed) return
+    updateCode.mutate({ id: accaId, booking_code: trimmed }, {
+      onSuccess: () => setEditing(false),
+    })
+  }
+
+  if (!editing) {
+    return (
+      <div className="flex items-center gap-2 px-1">
+        <span className="text-xs text-white/40 flex-1">
+          Code: <span className="text-white/70 font-bold">{currentCode}</span>
+        </span>
+        <button
+          onClick={() => setEditing(true)}
+          className="text-[10px] text-amber-400/70 hover:text-amber-400 underline underline-offset-2 transition-colors">
+          Edit
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <input
+        value={input}
+        onChange={e => setInput(e.target.value.toUpperCase())}
+        onKeyDown={e => e.key === 'Enter' && handleSave()}
+        placeholder="Paste SportyBet code e.g. A1B2C3"
+        maxLength={20}
+        className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm font-bold text-white placeholder:text-white/20 focus:outline-none focus:border-emerald-500/50 tracking-widest uppercase"
+      />
+      <button
+        onClick={handleSave}
+        disabled={!input.trim() || updateCode.isPending}
+        className="px-4 py-2 rounded-xl text-xs font-black text-white transition-all active:scale-95 disabled:opacity-40"
+        style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}>
+        {updateCode.isPending ? '…' : 'Save'}
+      </button>
+    </div>
+  )
+}
+
 // ── Empty state ───────────────────────────────────────────────────
 function EmptyState({ onGenerate, isPending, error }) {
   return (
     <div className="relative overflow-hidden rounded-2xl border border-white/8"
       style={{ background: 'linear-gradient(145deg, #0f0f1a 0%, #13131f 100%)' }}>
-      {/* bg decoration */}
       <div className="absolute inset-0 opacity-20"
         style={{ backgroundImage: 'radial-gradient(circle at 30% 50%, #6366f130 0%, transparent 60%), radial-gradient(circle at 80% 20%, #8b5cf620 0%, transparent 50%)' }}/>
       <div className="relative flex flex-col items-center gap-4 p-10 text-center">
@@ -122,9 +257,7 @@ function EmptyState({ onGenerate, isPending, error }) {
             {error ? 'Generation Failed' : 'No Acca Yet Today'}
           </p>
           <p className="text-xs text-white/40 mt-1 font-medium">
-            {error
-              ? error
-              : 'Our AI is ready to build today\'s picks'}
+            {error ? error : 'Our AI is ready to build today\'s picks'}
           </p>
         </div>
         <button onClick={onGenerate} disabled={isPending}
@@ -142,14 +275,13 @@ function EmptyState({ onGenerate, isPending, error }) {
 export default function AccumulatorCard({ showAdminControls = false }) {
   const { profile } = useAuthStore()
   const { data: acca, isLoading } = useDailyAccumulator()
-  const generate = useGenerateAccumulator()
+  const generate     = useGenerateAccumulator()
   const updateResult = useUpdateAccumulatorResult()
   const [analysisOpen, setAnalysisOpen] = useState(false)
-  const [lastError, setLastError] = useState(null)
+  const [lastError,    setLastError]    = useState(null)
 
   if (isLoading) return (
-    <div className="rounded-2xl border border-white/8 overflow-hidden animate-pulse"
-      style={{ background: '#0f0f1a' }}>
+    <div className="rounded-2xl border border-white/8 overflow-hidden animate-pulse" style={{ background: '#0f0f1a' }}>
       <div className="h-24 bg-white/5"/>
       <div className="p-4 space-y-4">
         {[1,2,3].map(i => <div key={i} className="h-16 rounded-xl bg-white/5"/>)}
@@ -161,9 +293,7 @@ export default function AccumulatorCard({ showAdminControls = false }) {
     <EmptyState
       onGenerate={() => {
         setLastError(null)
-        generate.mutate(undefined, {
-          onError: (e) => setLastError(e.message),
-        })
+        generate.mutate(undefined, { onError: (e) => setLastError(e.message) })
       }}
       isPending={generate.isPending}
       error={lastError}
@@ -171,9 +301,7 @@ export default function AccumulatorCard({ showAdminControls = false }) {
   )
 
   const isFinalised = acca.status !== 'pending'
-
-  // Compute unique markets for the badge strip
-  const markets = [...new Set((acca.selections || []).map(s => s.market))]
+  const markets     = [...new Set((acca.selections || []).map(s => s.market))]
 
   return (
     <div className={clsx(
@@ -197,7 +325,6 @@ export default function AccumulatorCard({ showAdminControls = false }) {
             <p className="text-white font-black text-lg leading-tight">
               {new Date(acca.date).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}
             </p>
-            {/* market tags */}
             <div className="flex flex-wrap gap-1.5 mt-2">
               {markets.map(m => {
                 const ms = marketStyle(m)
@@ -227,7 +354,7 @@ export default function AccumulatorCard({ showAdminControls = false }) {
         ))}
       </div>
 
-      {/* ── Footer ──────────────────────────────────────────────── */}
+      {/* ── Footer (combined odds) ───────────────────────────────── */}
       <div className="relative mx-4 my-4 rounded-2xl px-5 py-4 flex items-center justify-between gap-4"
         style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
         <div>
@@ -251,6 +378,24 @@ export default function AccumulatorCard({ showAdminControls = false }) {
         </div>
       </div>
 
+      {/* ── SportyBet Booking Code — visible to ALL users ─────────── */}
+      {acca.booking_code && (
+        <BookingCodeBanner code={acca.booking_code}/>
+      )}
+
+      {/* ── Admin: booking code input ────────────────────────────── */}
+      {showAdminControls && (
+        <div className="px-4 pb-3 border-t border-white/5 pt-3">
+          <p className="text-[10px] font-black uppercase tracking-widest text-white/30 mb-2 flex items-center gap-1.5">
+            <Ticket size={10}/> Set SportyBet Booking Code
+          </p>
+          <BookingCodeAdminInput
+            accaId={acca.id}
+            currentCode={acca.booking_code}
+          />
+        </div>
+      )}
+
       {/* ── Analysis ────────────────────────────────────────────── */}
       <button onClick={() => setAnalysisOpen(v => !v)}
         className="w-full px-5 py-3 flex items-center justify-between text-xs font-bold text-white/30 hover:text-white/60 transition-colors border-t border-white/5">
@@ -259,14 +404,13 @@ export default function AccumulatorCard({ showAdminControls = false }) {
         </div>
         {analysisOpen ? <ChevronUp size={13}/> : <ChevronDown size={13}/>}
       </button>
-
       {analysisOpen && (
         <div className="px-5 pb-4 text-xs text-white/40 leading-relaxed border-t border-white/5 pt-3">
           {acca.analysis}
         </div>
       )}
 
-      {/* ── Admin controls ───────────────────────────────────────── */}
+      {/* ── Admin: mark won/lost + re-generate ──────────────────── */}
       {showAdminControls && !isFinalised && (
         <div className="px-4 pb-4 flex gap-2 border-t border-white/5 pt-3">
           <button onClick={() => updateResult.mutate({ id: acca.id, status: 'won' })}
