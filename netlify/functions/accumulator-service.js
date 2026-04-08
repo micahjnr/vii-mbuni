@@ -17,13 +17,13 @@ const SUPABASE_URL      = process.env.SUPABASE_URL
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
 
 // ── Accumulator target window ─────────────────────────────────────
-const TARGET_MIN = 1.80
+const TARGET_MIN = 1.70
 const TARGET_MAX = 2.00
 
 // ── Per-pick filter thresholds ────────────────────────────────────
 const PICK_ODDS_MIN  = 1.15
-const PICK_ODDS_MAX  = 1.70
-const PROB_THRESHOLD = 0.55   // 1 / 1.82 ≈ 0.55
+const PICK_ODDS_MAX  = 1.55   // cap per-pick so 2-folds can land in 1.70–2.00
+const PROB_THRESHOLD = 0.60   // ≥60% win probability keeps picks confident
 
 // ── League IDs to scan (API-Football league IDs) ──────────────────
 // These cover the most active leagues with odds data on the free plan.
@@ -221,7 +221,7 @@ function buildAccumulator(candidates) {
   // Try 3-folds first
   for (let i = 0; i < pool.length - 2; i++) {
     for (let j = i + 1; j < pool.length - 1; j++) {
-      if (pool[i].odds * pool[j].odds > TARGET_MAX) continue
+      if (pool[i].odds * pool[j].odds * PICK_ODDS_MIN > TARGET_MAX) continue
       for (let k = j + 1; k < pool.length; k++) {
         const trio = [pool[i], pool[j], pool[k]]
         if (!validCombo(trio)) continue
@@ -251,7 +251,7 @@ function buildAnalysis(selections, total_odds, confidence) {
   return (
     `This ${selections.length}-fold accumulator spans ${leagues}, combining selections across ${markets}. ` +
     `Each pick carries an average implied probability of ${avgProbPc}%, reflecting strong market consensus. ` +
-    `Combined odds of ${total_odds.toFixed(2)} sit within our 1.80–1.90 target window — ` +
+    `Combined odds of ${total_odds.toFixed(2)} sit within our 1.70–2.00 target window — ` +
     `solid value without over-leveraging risk. Confidence: ${confidence}/100. ` +
     `Stake responsibly — this is a data-driven prediction, not a guarantee.`
   )
