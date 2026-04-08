@@ -207,19 +207,18 @@ function combinedOdds(picks) {
   return parseFloat(picks.reduce((acc, p) => acc * p.odds, 1).toFixed(3))
 }
 
-// unique games AND at least 2 different markets for 3-folds
-function validCombo(picks) {
-  const ids = picks.map(p => p.matchId)
-  if (new Set(ids).size !== ids.length) return false
-  if (picks.length >= 3 && new Set(picks.map(p => p.market)).size < 2) return false
-  return true
+// unique games — strip all possible synthetic suffixes
+function baseMatchId(id) {
+  return String(id).replace(/-(dc|o05|aw|o25|btts|o15|1x)$/, '')
 }
 
-// unique games only (relaxed — no market requirement)
-function validGamesOnly(picks) {
-  const ids = picks.map(p => p.matchId)
-  return new Set(ids).size === ids.length
-}
+function uniqueGames(picks)  { return new Set(picks.map(p => baseMatchId(p.matchId))).size === picks.length }
+function mixedMarkets(picks) { return new Set(picks.map(p => p.market)).size >= 2 }
+function mixedLeagues(picks) { return new Set(picks.map(p => p.league)).size >= 2 }
+
+// Validation tiers
+function validCombo(picks)    { return uniqueGames(picks) && mixedMarkets(picks) && mixedLeagues(picks) }
+function validGamesOnly(picks){ return uniqueGames(picks) }
 
 function buildAccumulator(candidates) {
   const scored = candidates
@@ -228,7 +227,7 @@ function buildAccumulator(candidates) {
 
   const pool = scored.slice(0, 40)
 
-  // ── Pass 1: 3-folds in target band with mixed markets ──────────────
+  // ── Pass 1: 3-folds in target band — mixed markets + different leagues ──
   for (let i = 0; i < pool.length - 2; i++) {
     for (let j = i + 1; j < pool.length - 1; j++) {
       const ijOdds = pool[i].odds * pool[j].odds
@@ -243,7 +242,22 @@ function buildAccumulator(candidates) {
     }
   }
 
-  // ── Pass 2: 3-folds in target band, relax market mixing ────────────
+  // ── Pass 2: 3-folds in target band — mixed markets, same league ok ──
+  for (let i = 0; i < pool.length - 2; i++) {
+    for (let j = i + 1; j < pool.length - 1; j++) {
+      const ijOdds = pool[i].odds * pool[j].odds
+      if (ijOdds * PICK_ODDS_MIN > TARGET_MAX) continue
+      if (ijOdds * PICK_ODDS_MAX < TARGET_MIN) continue
+      for (let k = j + 1; k < pool.length; k++) {
+        const trio = [pool[i], pool[j], pool[k]]
+        if (!uniqueGames(trio) || !mixedMarkets(trio)) continue
+        const total = combinedOdds(trio)
+        if (total >= TARGET_MIN && total <= TARGET_MAX) return { selections: trio, total_odds: total }
+      }
+    }
+  }
+
+  // ── Pass 3: 3-folds in target band — unique games only ──────────────
   for (let i = 0; i < pool.length - 2; i++) {
     for (let j = i + 1; j < pool.length - 1; j++) {
       const ijOdds = pool[i].odds * pool[j].odds
@@ -258,7 +272,7 @@ function buildAccumulator(candidates) {
     }
   }
 
-  // ── Pass 3: Best 3-fold closest to target midpoint — NEVER 2-fold ──
+  // ── Pass 4: Closest valid 3-fold to midpoint — NEVER 2-fold ─────────
   const midTarget = (TARGET_MIN + TARGET_MAX) / 2
   let bestMixed = null, bestMixedDist = Infinity
   let bestAny   = null, bestAnyDist   = Infinity
@@ -276,7 +290,6 @@ function buildAccumulator(candidates) {
     }
   }
 
-  // Always return a 3-fold — prefer mixed markets
   return bestMixed || bestAny || null
 }
 
