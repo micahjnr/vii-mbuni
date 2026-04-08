@@ -78,7 +78,12 @@ async function fetchOddsApiSport(sport) {
   if (rem !== null && parseInt(rem) < 10) console.warn(`[OddsAPI] ⚠️ Only ${rem} requests remaining this month!`)
   if (res.status === 401) throw new Error('THE_ODDS_API_KEY invalid or not set in Netlify env vars')
   if (res.status === 422) return []
-  if (res.status === 429) throw new Error('THE_ODDS_API_KEY monthly quota exhausted (500 req/month on free plan). Upgrade at the-odds-api.com or wait until next month.')
+  if (res.status === 429) {
+    // remaining=0 → monthly quota exhausted; remaining>0 → per-second rate limit (slow down)
+    const remNum = rem !== null ? parseInt(rem) : -1
+    if (remNum === 0) throw new Error('THE_ODDS_API_KEY monthly quota exhausted (500 req/month on free plan). Upgrade at the-odds-api.com or wait until next month.')
+    throw new Error(`OddsAPI rate limited (${remNum} requests still remaining this month — requests fired too fast)`)
+  }
   if (!res.ok) throw new Error(`OddsAPI HTTP ${res.status}`)
   return res.json()
 }
@@ -114,22 +119,24 @@ function extractOddsApiCandidates(games, sport) {
   return out
 }
 
+const sleep = ms => new Promise(r => setTimeout(r, ms))
+
 async function getCandidatesFromOddsApi() {
   const all = []
-  for (let i = 0; i < ODDS_API_SPORTS.length; i += 5) {
-    const batch = ODDS_API_SPORTS.slice(i, i + 5)
-    const results = await Promise.allSettled(batch.map(s => fetchOddsApiSport(s)))
-    for (let j = 0; j < batch.length; j++) {
-      if (results[j].status === 'fulfilled') {
-        all.push(...extractOddsApiCandidates(results[j].value, batch[j]))
-      } else {
-        const msg = results[j].reason?.message || ''
-        // Re-throw quota/auth errors so they bubble up with a clear message
-        if (msg.includes('quota exhausted') || msg.includes('invalid')) throw new Error(msg)
-        console.warn(`[OddsAPI] skip ${batch[j]}: ${msg}`)
-      }
+  // Sequential requests with 400ms gap — avoids the per-second rate limit on free tier.
+  // (The old parallel batch of 5 triggered a 429 on the 5th concurrent request.)
+  for (const sport of ODDS_API_SPORTS) {
+    try {
+      const games = await fetchOddsApiSport(sport)
+      all.push(...extractOddsApiCandidates(games, sport))
+    } catch (err) {
+      const msg = err.message || ''
+      // Auth and quota errors are fatal — stop immediately with a clear message
+      if (msg.includes('invalid') || msg.includes('quota exhausted')) throw err
+      console.warn(`[OddsAPI] skip ${sport}: ${msg}`)
     }
-    if (all.length >= 50) break
+    if (all.length >= 50) break   // enough candidates — stop early to save quota
+    await sleep(400)              // 400ms between calls → well under rate limit
   }
   console.log(`[OddsAPI] ${all.length} candidates`)
   return all
@@ -182,7 +189,7 @@ async function getCandidatesFromAfOdds(fixtures) {
         if (d.length) { data = d; break }
       } catch { /* try next */ }
     }
-    if (!data?.length) continue
+    if (!data?.length) { await sleep(600); continue }  // delay even on miss
 
     const bm = data[0]?.bookmakers?.[0]; if (!bm) continue
     const match = `${fix.home} vs ${fix.away}`
@@ -199,6 +206,7 @@ async function getCandidatesFromAfOdds(fixtures) {
         candidates.push({ matchId: fix.id, match, league: fix.league, market, pick: val.value, odds, prob })
       }
     }
+    await sleep(600)  // 600ms between fixtures → stays under AF's 10 req/min rate limit
   }
   console.log(`[AF-Odds] ${candidates.length} candidates`)
   return candidates
@@ -286,6 +294,7 @@ async function getCandidatesFromPredictions(fixtures) {
     if (typeof goalScore === 'number' && goalScore > 3) {
       candidates.push({ matchId: `${fix.id}-o05`, match, league, market: 'Over/Under', pick: 'Over 0.5 Goals', odds: 1.12, prob: 0.89 })
     }
+    await sleep(600)  // throttle predictions calls — same 10 req/min AF rate limit
   }
 
   console.log(`[Predictions] ${candidates.length} synthetic candidates`)
