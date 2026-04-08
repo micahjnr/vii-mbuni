@@ -50,10 +50,10 @@ console.log('[Env] Keys present:', {
 
 // ── Accumulator target ────────────────────────────────────────────
 const TARGET_MIN = 1.70   // target accumulator band
-const TARGET_MAX = 2.50   // raised from 2.00 — allows 2-folds like 1.30×1.80=2.34
+const TARGET_MAX = 2.50   // 3-fold target: e.g. 1.18×1.22×1.25=1.80, or 1.30×1.35×1.40=2.46
 const PICK_MIN   = 1.15
-const PICK_MAX   = 2.20   // raised from 1.85 — now captures Over 2.5 Goals (1.90-2.10) and BTTS Yes (1.75-2.00)
-const PROB_MIN   = 0.40   // ~2.50 implied odds — lowered to match new PICK_MAX ceiling
+const PICK_MAX   = 1.85   // cap per-pick so a 3-fold stays roughly within 1.70–2.50 combined
+const PROB_MIN   = 0.45   // ~2.22 implied odds — keeps picks confident
 
 function todayISO() { return new Date().toISOString().slice(0, 10) }
 function db()       { return createClient(SB_URL, SB_KEY) }
@@ -346,17 +346,22 @@ function buildAccu(rawCandidates) {
     }, {})
   )
 
-  const pool  = [...deduped].sort((a, b) => b.prob - a.prob).slice(0, 60)
-  const co    = picks => +picks.reduce((a, p) => a * p.odds, 1).toFixed(3)
+  const pool   = [...deduped].sort((a, b) => b.prob - a.prob).slice(0, 60)
+  const co     = picks => +picks.reduce((a, p) => a * p.odds, 1).toFixed(3)
   // Unique underlying game (strip suffixes added for DC/Over synthetic picks)
-  const baseId = id => String(id).replace(/-dc$|-o05$/, '')
-  const valid  = picks => new Set(picks.map(p => baseId(p.matchId))).size === picks.length
+  const baseId = id => String(id).replace(/-dc$|-o05$|-aw$|-o25$|-btts$/, '')
 
-  // 3-folds in target band
-  // Guard: if the two highest-prob picks multiplied already exceed TARGET_MAX, skip
+  // Validate: unique games AND at least 2 different markets (avoid all-same-market accas)
+  const valid = picks => {
+    const uniqueGames   = new Set(picks.map(p => baseId(p.matchId))).size === picks.length
+    const uniqueMarkets = new Set(picks.map(p => p.market)).size >= Math.min(2, picks.length)
+    return uniqueGames && uniqueMarkets
+  }
+
+  // ── Pass 1: 3-folds in target band with mixed markets ─────────────
   for (let i = 0; i < pool.length - 2; i++) {
     for (let j = i + 1; j < pool.length - 1; j++) {
-      if (pool[i].odds * pool[j].odds > TARGET_MAX) continue  // even × PICK_MIN would bust
+      if (pool[i].odds * pool[j].odds > TARGET_MAX) continue
       for (let k = j + 1; k < pool.length; k++) {
         const t = [pool[i], pool[j], pool[k]]
         if (!valid(t)) continue
@@ -366,35 +371,41 @@ function buildAccu(rawCandidates) {
     }
   }
 
-  // 2-folds in target band
-  for (let i = 0; i < pool.length - 1; i++) {
-    for (let j = i + 1; j < pool.length; j++) {
-      const t = [pool[i], pool[j]]
-      if (!valid(t)) continue
-      const total = co(t)
-      if (total >= TARGET_MIN && total <= TARGET_MAX) return { selections: t, total_odds: total }
-    }
-  }
-
-  // Last resort: best valid 3-fold regardless of odds band
+  // ── Pass 2: 3-folds in target band, relax mixed-market requirement ─
+  // (allow same market if no mixed combo exists, but still require unique games)
+  const validGamesOnly = picks => new Set(picks.map(p => baseId(p.matchId))).size === picks.length
   for (let i = 0; i < pool.length - 2; i++) {
     for (let j = i + 1; j < pool.length - 1; j++) {
+      if (pool[i].odds * pool[j].odds > TARGET_MAX) continue
       for (let k = j + 1; k < pool.length; k++) {
         const t = [pool[i], pool[j], pool[k]]
-        if (valid(t)) return { selections: t, total_odds: co(t) }
+        if (!validGamesOnly(t)) continue
+        const total = co(t)
+        if (total >= TARGET_MIN && total <= TARGET_MAX) return { selections: t, total_odds: total }
       }
     }
   }
 
-  // Absolute last resort: best valid 2-fold
-  for (let i = 0; i < pool.length - 1; i++) {
-    for (let j = i + 1; j < pool.length; j++) {
-      const t = [pool[i], pool[j]]
-      if (valid(t)) return { selections: t, total_odds: co(t) }
+  // ── Pass 3: Best 3-fold closest to target band (mixed markets preferred) ─
+  let bestMixed = null, bestMixedDist = Infinity
+  let bestAny   = null, bestAnyDist   = Infinity
+  const midTarget = (TARGET_MIN + TARGET_MAX) / 2
+
+  for (let i = 0; i < pool.length - 2; i++) {
+    for (let j = i + 1; j < pool.length - 1; j++) {
+      for (let k = j + 1; k < pool.length; k++) {
+        const t = [pool[i], pool[j], pool[k]]
+        if (!validGamesOnly(t)) continue
+        const total = co(t)
+        const dist  = Math.abs(total - midTarget)
+        if (dist < bestAnyDist) { bestAny = { selections: t, total_odds: total }; bestAnyDist = dist }
+        if (valid(t) && dist < bestMixedDist) { bestMixed = { selections: t, total_odds: total }; bestMixedDist = dist }
+      }
     }
   }
 
-  return null
+  // Prefer mixed-market 3-fold, fall back to any 3-fold — NEVER return a 2-fold
+  return bestMixed || bestAny || null
 }
 
 // ══════════════════════════════════════════════════════════════════
