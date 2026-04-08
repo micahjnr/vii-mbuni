@@ -357,8 +357,14 @@ exports.handler = async (event) => {
       )
 
     const today = todayISO()
+    const force = event.queryStringParameters?.force === 'true' ||
+                  JSON.parse(event.body || '{}').force === true
     const { data: existing } = await db().from('daily_accumulators').select('id').eq('date', today).maybeSingle()
-    if (existing) return json(200, { message: 'Already generated today', id: existing.id })
+    if (existing && !force) return json(200, { message: 'Already generated today', id: existing.id })
+    if (existing && force) {
+      await db().from('daily_accumulators').delete().eq('id', existing.id)
+      console.log(`[Acca] Force regenerate — deleted existing ${existing.id}`)
+    }
 
     let candidates   = []
     let providerUsed = ''
