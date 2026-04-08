@@ -174,7 +174,9 @@ async function getCandidatesFromAfOdds(fixtures) {
     const bm = data[0]?.bookmakers?.[0]; if (!bm) continue
     const match = `${fix.home} vs ${fix.away}`
 
+    const EXCLUDED = new Set(['Asian Handicap', 'Asian Handicap First Half', 'Asian Handicap Second Half'])
     for (const bet of (bm.bets || [])) {
+      if (EXCLUDED.has(bet.name)) continue  // skip — always clusters at 1.15, useless for acca
       const market = LABELS[bet.name] || bet.name
       for (const val of (bet.values || [])) {
         const odds = parseFloat(val.odd)
