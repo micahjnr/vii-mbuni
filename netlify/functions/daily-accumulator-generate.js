@@ -15,6 +15,8 @@
 //
 // You only need ONE key. If THE_ODDS_API_KEY is set it is used first.
 // Otherwise API_FOOTBALL_KEY covers both sources 2 and 3.
+//
+// Target accumulator range: 1.70–2.00 combined odds
 
 const { createClient } = require('@supabase/supabase-js')
 
@@ -37,11 +39,11 @@ const SB_URL           = process.env.SUPABASE_URL
 const SB_KEY           = process.env.SUPABASE_SERVICE_ROLE_KEY
 
 // ── Accumulator target ────────────────────────────────────────────
-const TARGET_MIN = 1.80   // target 1.80–2.00 daily acca
+const TARGET_MIN = 1.70   // target 1.70–2.00 daily acca
 const TARGET_MAX = 2.00
 const PICK_MIN   = 1.15
-const PICK_MAX   = 1.70
-const PROB_MIN   = 0.55   // ~1.82 odds max
+const PICK_MAX   = 1.55   // cap per-pick so 2-folds can land in 1.70–2.00 (1.55×1.55=2.40 max)
+const PROB_MIN   = 0.60   // ~1.67 implied odds → keeps picks confident (≥60% win prob)
 
 function todayISO() { return new Date().toISOString().slice(0, 10) }
 function db()       { return createClient(SB_URL, SB_KEY) }
@@ -296,9 +298,10 @@ function buildAccu(rawCandidates) {
   const valid  = picks => new Set(picks.map(p => baseId(p.matchId))).size === picks.length
 
   // 3-folds in target band
+  // Guard: if the two lowest-odds picks already exceed TARGET_MAX, no third pick can help
   for (let i = 0; i < pool.length - 2; i++) {
     for (let j = i + 1; j < pool.length - 1; j++) {
-      if (pool[i].odds * pool[j].odds > TARGET_MAX) continue
+      if (pool[i].odds * pool[j].odds > TARGET_MAX) continue  // even × PICK_MIN would bust
       for (let k = j + 1; k < pool.length; k++) {
         const t = [pool[i], pool[j], pool[k]]
         if (!valid(t)) continue
