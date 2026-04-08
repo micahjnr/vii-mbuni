@@ -75,7 +75,7 @@ async function fetchOddsApiSport(sport) {
 
 function extractOddsApiCandidates(games, sport) {
   const now   = Date.now()
-  const in48h = now + 48 * 3600 * 1000
+  const in48h = now + 72 * 3600 * 1000
   const league = sport.replace('soccer_', '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
   const LABELS = { h2h: '1X2', totals: 'Over/Under', btts: 'Both Teams To Score' }
   const out = []
@@ -92,7 +92,6 @@ function extractOddsApiCandidates(games, sport) {
           const odds = parseFloat(o.price)
           if (!odds || odds < PICK_MIN || odds > PICK_MAX) continue
           const prob = +(1 / odds).toFixed(4)
-          if (prob < PROB_MIN) continue
           let pick = o.name
           if (mkt.key === 'totals') pick = `${o.name} ${o.point} Goals`
           if (mkt.key === 'btts')   pick = o.name === 'Yes' ? 'Both Teams Score' : 'Not Both Teams Score'
