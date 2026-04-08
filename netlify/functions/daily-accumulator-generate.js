@@ -37,11 +37,11 @@ const SB_URL           = process.env.SUPABASE_URL
 const SB_KEY           = process.env.SUPABASE_SERVICE_ROLE_KEY
 
 // ── Accumulator target ────────────────────────────────────────────
-const TARGET_MIN = 1.40   // wider band = more successful combos
-const TARGET_MAX = 3.20
-const PICK_MIN   = 1.10
-const PICK_MAX   = 2.50
-const PROB_MIN   = 0.40   // ~2.50 odds max
+const TARGET_MIN = 1.80   // target 1.80–2.00 daily acca
+const TARGET_MAX = 2.00
+const PICK_MIN   = 1.15
+const PICK_MAX   = 1.70
+const PROB_MIN   = 0.55   // ~1.82 odds max
 
 function todayISO() { return new Date().toISOString().slice(0, 10) }
 function db()       { return createClient(SB_URL, SB_KEY) }
@@ -420,11 +420,12 @@ exports.handler = async (event) => {
       `Data: ${providerUsed}. Stake responsibly — predictions only, not financial advice.`
     )
 
-    const cleanSels = result.selections.map(({ prob, ...s }) => ({
+    // Keep fixture_id so the cron can auto-settle by fetching results
+    const cleanSels = result.selections.map(({ prob, matchId, ...s }) => ({
       ...s,
-      matchId: undefined, // strip internal id
+      fixture_id: typeof matchId === 'string' ? parseInt(matchId.split('-')[0], 10) : matchId,
       probability: prob,
-    })).map(({ matchId, ...s }) => s)
+    }))
 
     const { data: saved, error } = await db()
       .from('daily_accumulators')
