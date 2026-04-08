@@ -16,7 +16,7 @@
 // You only need ONE key. If THE_ODDS_API_KEY is set it is used first.
 // Otherwise API_FOOTBALL_KEY covers both sources 2 and 3.
 //
-// Target accumulator range: 1.70–2.00 combined odds
+// Target accumulator range: 1.70–2.50 combined odds
 
 const { createClient } = require('@supabase/supabase-js')
 
@@ -48,11 +48,11 @@ console.log('[Env] Keys present:', {
 })
 
 // ── Accumulator target ────────────────────────────────────────────
-const TARGET_MIN = 1.70   // target 1.70–2.00 daily acca
-const TARGET_MAX = 2.00
+const TARGET_MIN = 1.70   // target accumulator band
+const TARGET_MAX = 2.50   // raised from 2.00 — allows 2-folds like 1.30×1.80=2.34
 const PICK_MIN   = 1.15
-const PICK_MAX   = 1.85   // cap per-pick so 2-folds can land in 1.70–2.00 (1.55×1.55=2.40 max)
-const PROB_MIN   = 0.50   // ~1.67 implied odds → keeps picks confident (≥60% win prob)
+const PICK_MAX   = 2.20   // raised from 1.85 — now captures Over 2.5 Goals (1.90-2.10) and BTTS Yes (1.75-2.00)
+const PROB_MIN   = 0.40   // ~2.50 implied odds — lowered to match new PICK_MAX ceiling
 
 function todayISO() { return new Date().toISOString().slice(0, 10) }
 function db()       { return createClient(SB_URL, SB_KEY) }
@@ -94,10 +94,12 @@ function extractOddsApiCandidates(games, sport) {
   const league = sport.replace('soccer_', '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
   const LABELS = { h2h: '1X2', totals: 'Over/Under', btts: 'Both Teams To Score' }
   const out = []
+  let gamesInWindow = 0, oddsOutOfRange = 0
 
   for (const game of (games || [])) {
     const t = new Date(game.commence_time).getTime()
     if (t < now || t > in48h) continue
+    gamesInWindow++
     const match = `${game.home_team} vs ${game.away_team}`
 
     for (const bk of (game.bookmakers || [])) {
@@ -105,7 +107,7 @@ function extractOddsApiCandidates(games, sport) {
         const market = LABELS[mkt.key]; if (!market) continue
         for (const o of (mkt.outcomes || [])) {
           const odds = parseFloat(o.price)
-          if (!odds || odds < PICK_MIN || odds > PICK_MAX) continue
+          if (!odds || odds < PICK_MIN || odds > PICK_MAX) { oddsOutOfRange++; continue }
           const prob = +(1 / odds).toFixed(4)
           let pick = o.name
           if (mkt.key === 'totals') pick = `${o.name} ${o.point} Goals`
@@ -116,6 +118,7 @@ function extractOddsApiCandidates(games, sport) {
       break // one bookmaker per game is enough
     }
   }
+  if (out.length === 0) console.warn(`[OddsAPI] ${sport}: ${gamesInWindow} games in window, ${oddsOutOfRange} odds outside ${PICK_MIN}–${PICK_MAX} range → 0 candidates`)
   return out
 }
 
@@ -322,7 +325,7 @@ function buildAccu(rawCandidates) {
   const valid  = picks => new Set(picks.map(p => baseId(p.matchId))).size === picks.length
 
   // 3-folds in target band
-  // Guard: if the two lowest-odds picks already exceed TARGET_MAX, no third pick can help
+  // Guard: if the two highest-prob picks multiplied already exceed TARGET_MAX, skip
   for (let i = 0; i < pool.length - 2; i++) {
     for (let j = i + 1; j < pool.length - 1; j++) {
       if (pool[i].odds * pool[j].odds > TARGET_MAX) continue  // even × PICK_MIN would bust
