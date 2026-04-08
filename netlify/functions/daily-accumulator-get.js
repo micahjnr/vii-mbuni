@@ -24,8 +24,8 @@ const SB_KEY     = process.env.SUPABASE_SERVICE_ROLE_KEY
 const TARGET_MIN = 1.70
 const TARGET_MAX = 2.00
 const ODDS_MIN   = 1.15
-const ODDS_MAX   = 1.55
-const PROB_MIN   = 0.60
+const ODDS_MAX   = 1.65
+const PROB_MIN   = 0.55
 // Expanded leagues: PL, La Liga, Bundesliga, Serie A, Ligue 1, UCL, UEL, UECL,
 // Eredivisie, Primeira Liga, Championship, Scottish Prem, Turkish SL,
 // Belgian Pro, Greek SL, Russian PL, Brazilian Serie A, Argentine Primera,
