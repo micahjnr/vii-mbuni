@@ -9,8 +9,8 @@ const API_KEY    = process.env.API_FOOTBALL_KEY
 const API_BASE   = 'https://v3.football.api-sports.io'
 const SB_URL     = process.env.SUPABASE_URL
 const SB_KEY     = process.env.SUPABASE_SERVICE_ROLE_KEY
-const TARGET_MIN = 1.80, TARGET_MAX = 1.90
-const ODDS_MIN   = 1.05, ODDS_MAX   = 1.55, PROB_MIN = 0.64
+const TARGET_MIN = 1.80, TARGET_MAX = 2.00
+const ODDS_MIN   = 1.15, ODDS_MAX   = 1.70, PROB_MIN = 0.55
 const LEAGUE_IDS = new Set([39,140,78,135,61,2,3,197,529,94])
 const MARKET_LABELS = {
   'Match Winner':'1X2 (Match Result)','Double Chance':'Double Chance',
@@ -84,7 +84,7 @@ async function run() {
 
   const avgProb=result.selections.reduce((a,b)=>a+b.prob,0)/result.selections.length
   const confidence=Math.min(85,Math.max(70,Math.round(avgProb*100)))
-  const cleanSels=result.selections.map(({matchId,prob,...s})=>({...s,probability:prob}))
+  const cleanSels=result.selections.map(({matchId,prob,...s})=>({...s,fixture_id:matchId,probability:prob}))
   const analysis=`${result.selections.length}-fold accumulator. Avg probability: ${(avgProb*100).toFixed(0)}%. Odds: ${result.total_odds.toFixed(2)}. Confidence: ${confidence}/100.`
 
   const {data:saved,error}=await db().from('daily_accumulators')
