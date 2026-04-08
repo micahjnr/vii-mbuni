@@ -61,14 +61,13 @@ function db()       { return createClient(SB_URL, SB_KEY) }
 // SOURCE 1 — The Odds API (the-odds-api.com)
 // ══════════════════════════════════════════════════════════════════
 
+// Reduced to 8 high-volume leagues (was 18) to stay within the 500 req/month free tier.
+// 8 requests/day × 30 days = 240 req/month — safely under the limit.
+// If you upgrade to a paid plan you can restore the full list.
 const ODDS_API_SPORTS = [
   'soccer_epl', 'soccer_spain_la_liga', 'soccer_germany_bundesliga',
   'soccer_italy_serie_a', 'soccer_france_ligue_one', 'soccer_uefa_champs_league',
-  'soccer_uefa_europa_league', 'soccer_efl_champ', 'soccer_netherlands_eredivisie',
-  'soccer_portugal_primeira_liga', 'soccer_turkey_super_league',
-  'soccer_belgium_first_div', 'soccer_brazil_campeonato',
-  'soccer_argentina_primera_division', 'soccer_mls', 'soccer_scotland_premiership',
-  'soccer_mexico_ligamx', 'soccer_norway_eliteserien',
+  'soccer_uefa_europa_league', 'soccer_efl_champ',
 ]
 
 async function fetchOddsApiSport(sport) {
@@ -76,8 +75,10 @@ async function fetchOddsApiSport(sport) {
   const res = await fetch(url)
   const rem = res.headers.get('x-requests-remaining')
   console.log(`[OddsAPI] ${sport} remaining=${rem}`)
-  if (res.status === 401) throw new Error('THE_ODDS_API_KEY invalid')
+  if (rem !== null && parseInt(rem) < 10) console.warn(`[OddsAPI] ⚠️ Only ${rem} requests remaining this month!`)
+  if (res.status === 401) throw new Error('THE_ODDS_API_KEY invalid or not set in Netlify env vars')
   if (res.status === 422) return []
+  if (res.status === 429) throw new Error('THE_ODDS_API_KEY monthly quota exhausted (500 req/month on free plan). Upgrade at the-odds-api.com or wait until next month.')
   if (!res.ok) throw new Error(`OddsAPI HTTP ${res.status}`)
   return res.json()
 }
@@ -119,10 +120,14 @@ async function getCandidatesFromOddsApi() {
     const batch = ODDS_API_SPORTS.slice(i, i + 5)
     const results = await Promise.allSettled(batch.map(s => fetchOddsApiSport(s)))
     for (let j = 0; j < batch.length; j++) {
-      if (results[j].status === 'fulfilled')
+      if (results[j].status === 'fulfilled') {
         all.push(...extractOddsApiCandidates(results[j].value, batch[j]))
-      else
-        console.warn(`[OddsAPI] skip ${batch[j]}: ${results[j].reason?.message}`)
+      } else {
+        const msg = results[j].reason?.message || ''
+        // Re-throw quota/auth errors so they bubble up with a clear message
+        if (msg.includes('quota exhausted') || msg.includes('invalid')) throw new Error(msg)
+        console.warn(`[OddsAPI] skip ${batch[j]}: ${msg}`)
+      }
     }
     if (all.length >= 50) break
   }
@@ -418,9 +423,13 @@ exports.handler = async (event) => {
     console.log(`[Acca] Total candidates: ${candidates.length} via [${providerUsed}]`)
 
     if (candidates.length < 2) {
-      const hint = API_FOOTBALL_KEY
-        ? 'API-Football free plan has very limited odds data. Set THE_ODDS_API_KEY from the-odds-api.com (free, 500 req/month) for reliable daily picks.'
-        : 'Set THE_ODDS_API_KEY (the-odds-api.com, free) or API_FOOTBALL_KEY in Netlify → Site → Environment variables.'
+      let hint = ''
+      if (ODDS_API_KEY && API_FOOTBALL_KEY)
+        hint = 'Both The Odds API and API-Football returned insufficient data. Your THE_ODDS_API_KEY monthly quota may be exhausted (500 req/month free). Check Netlify function logs for "[OddsAPI] remaining=0".'
+      else if (ODDS_API_KEY)
+        hint = 'THE_ODDS_API_KEY is set but returned no qualifying picks. Your monthly quota (500 req/month free) may be exhausted. Check Netlify function logs for the remaining count.'
+      else
+        hint = 'API-Football free plan has very limited odds data. Add THE_ODDS_API_KEY from the-odds-api.com (free, 500 req/month) in Netlify → Site → Environment variables.'
       throw new Error(`Only ${candidates.length} qualifying picks found. ${hint}`)
     }
 
