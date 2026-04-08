@@ -33,10 +33,19 @@ const json = (status, body) => ({
 })
 
 // ── Env ───────────────────────────────────────────────────────────
-const ODDS_API_KEY     = process.env.THE_ODDS_API_KEY
+// Try multiple possible env var names in case of Netlify naming issues
+const ODDS_API_KEY     = process.env.THE_ODDS_API_KEY || process.env.ODDS_API_KEY
 const API_FOOTBALL_KEY = process.env.API_FOOTBALL_KEY
 const SB_URL           = process.env.SUPABASE_URL
 const SB_KEY           = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+// Debug logging — check Netlify function logs to see which keys are present
+console.log('[Env] Keys present:', {
+  THE_ODDS_API_KEY: !!process.env.THE_ODDS_API_KEY,
+  ODDS_API_KEY: !!process.env.ODDS_API_KEY,
+  API_FOOTBALL_KEY: !!process.env.API_FOOTBALL_KEY,
+  SUPABASE_URL: !!process.env.SUPABASE_URL,
+})
 
 // ── Accumulator target ────────────────────────────────────────────
 const TARGET_MIN = 1.70   // target 1.70–2.00 daily acca
