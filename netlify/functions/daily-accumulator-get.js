@@ -18,6 +18,8 @@ const json = (status, body) => ({
 
 // ── Config ────────────────────────────────────────────────────────
 const API_KEY    = process.env.API_FOOTBALL_KEY
+const ODDS_KEY   = process.env.THE_ODDS_API_KEY || process.env.ODDS_API_KEY
+console.log('[Env] THE_ODDS_API_KEY:', !!process.env.THE_ODDS_API_KEY, '| API_FOOTBALL_KEY:', !!process.env.API_FOOTBALL_KEY)
 const API_BASE   = 'https://v3.football.api-sports.io'
 const SB_URL     = process.env.SUPABASE_URL
 const SB_KEY     = process.env.SUPABASE_SERVICE_ROLE_KEY
