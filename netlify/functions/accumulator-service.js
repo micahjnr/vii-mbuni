@@ -18,12 +18,13 @@ const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
 
 // ── Accumulator target window ─────────────────────────────────────
 const TARGET_MIN = 1.70
-const TARGET_MAX = 2.00
+const TARGET_MAX = 2.50
 
 // ── Per-pick filter thresholds ────────────────────────────────────
-const PICK_ODDS_MIN  = 1.15
-const PICK_ODDS_MAX  = 1.85   // cap per-pick so 2-folds can land in 1.70–2.00
-const PROB_THRESHOLD = 0.50   // ≥60% win probability keeps picks confident
+// For a 3-fold: ∛1.70 ≈ 1.19, ∛2.50 ≈ 1.36 — per-pick must stay tight
+const PICK_ODDS_MIN  = 1.10
+const PICK_ODDS_MAX  = 1.45   // hard cap: 1.45³ = 3.05, with varied picks we land in 1.70–2.50
+const PROB_THRESHOLD = 0.55   // ≥55% implied probability — confident picks only
 
 // ── League IDs to scan (API-Football league IDs) ──────────────────
 // These cover the most active leagues with odds data on the free plan.
@@ -230,7 +231,9 @@ function buildAccumulator(candidates) {
   // ── Pass 1: 3-folds in target band with mixed markets ──────────────
   for (let i = 0; i < pool.length - 2; i++) {
     for (let j = i + 1; j < pool.length - 1; j++) {
-      if (pool[i].odds * pool[j].odds * PICK_ODDS_MIN > TARGET_MAX) continue
+      const ijOdds = pool[i].odds * pool[j].odds
+      if (ijOdds * PICK_ODDS_MIN > TARGET_MAX) continue
+      if (ijOdds * PICK_ODDS_MAX < TARGET_MIN) continue
       for (let k = j + 1; k < pool.length; k++) {
         const trio = [pool[i], pool[j], pool[k]]
         if (!validCombo(trio)) continue
@@ -243,7 +246,9 @@ function buildAccumulator(candidates) {
   // ── Pass 2: 3-folds in target band, relax market mixing ────────────
   for (let i = 0; i < pool.length - 2; i++) {
     for (let j = i + 1; j < pool.length - 1; j++) {
-      if (pool[i].odds * pool[j].odds * PICK_ODDS_MIN > TARGET_MAX) continue
+      const ijOdds = pool[i].odds * pool[j].odds
+      if (ijOdds * PICK_ODDS_MIN > TARGET_MAX) continue
+      if (ijOdds * PICK_ODDS_MAX < TARGET_MIN) continue
       for (let k = j + 1; k < pool.length; k++) {
         const trio = [pool[i], pool[j], pool[k]]
         if (!validGamesOnly(trio)) continue
