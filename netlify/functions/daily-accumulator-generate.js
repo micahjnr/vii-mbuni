@@ -38,6 +38,7 @@ const ODDS_API_KEY     = process.env.THE_ODDS_API_KEY || process.env.ODDS_API_KE
 const API_FOOTBALL_KEY = process.env.API_FOOTBALL_KEY
 const SB_URL           = process.env.SUPABASE_URL
 const SB_KEY           = process.env.SUPABASE_SERVICE_ROLE_KEY
+const BETPADDI_KEY     = process.env.BETPADDI_API_KEY || 'BP-93c1e524766b17dee7ca14963d0d4f5c1364933e80b2957b'
 
 // Debug logging — check Netlify function logs to see which keys are present
 console.log('[Env] Keys present:', {
@@ -512,6 +513,81 @@ async function getCandidatesFromFootballData() {
   return candidates
 }
 
+// ══════════════════════════════════════════════════════════════════
+// BETPADDI — Auto-generate SportyBet booking code
+// Uses the Betpaddi API to convert our selections into a real
+// SportyBet booking code. Runs after the accumulator is saved.
+// Docs: https://betpaddi.com (X-API-Key header, Beta V1.0)
+// ══════════════════════════════════════════════════════════════════
+
+async function generateSportyBetCode(selections) {
+  if (!BETPADDI_KEY) {
+    console.warn('[Betpaddi] No API key — skipping booking code generation')
+    return null
+  }
+
+  // Build the selections payload Betpaddi expects.
+  // They need: match name, market, pick, and odds per selection.
+  const payload = {
+    bookie: 'sportybet',
+    country: 'ng',
+    selections: selections.map(s => ({
+      match:  s.match,
+      league: s.league,
+      market: s.market,
+      pick:   s.pick,
+      odds:   s.odds,
+    })),
+  }
+
+  console.log('[Betpaddi] Generating SportyBet code for', selections.length, 'selections...')
+
+  try {
+    // Try endpoint 1: generate code directly from selections
+    const res = await fetch('https://betpaddi.com/api/v1/booking/generate', {
+      method:  'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Key':    BETPADDI_KEY,
+      },
+      body: JSON.stringify(payload),
+    })
+    const body = await res.json().catch(() => ({}))
+    console.log('[Betpaddi] generate response:', res.status, JSON.stringify(body).slice(0, 200))
+
+    if (res.ok && body.code) {
+      console.log('[Betpaddi] ✅ Booking code:', body.code)
+      return body.code
+    }
+
+    // Try endpoint 2: alternate path some APIs use
+    const res2 = await fetch('https://betpaddi.com/api/v1/booking/create', {
+      method:  'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Key':    BETPADDI_KEY,
+      },
+      body: JSON.stringify(payload),
+    })
+    const body2 = await res2.json().catch(() => ({}))
+    console.log('[Betpaddi] create response:', res2.status, JSON.stringify(body2).slice(0, 200))
+
+    if (res2.ok && (body2.code || body2.booking_code || body2.shareCode)) {
+      const code = body2.code || body2.booking_code || body2.shareCode
+      console.log('[Betpaddi] ✅ Booking code:', code)
+      return code
+    }
+
+    // Log full error for debugging in Netlify logs
+    console.warn('[Betpaddi] Could not get booking code:', JSON.stringify(body2))
+    return null
+
+  } catch (err) {
+    console.warn('[Betpaddi] Error generating code:', err.message)
+    return null
+  }
+}
+
 // ── Handler ───────────────────────────────────────────────────────
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 200, headers: CORS, body: '' }
@@ -623,6 +699,27 @@ exports.handler = async (event) => {
 
     if (error) throw new Error(`DB insert failed: ${error.message}`)
     console.log(`[Acca] ✅ ${saved.id} odds=${saved.total_odds} conf=${saved.confidence} via ${providerUsed}`)
+
+    // ── Auto-generate SportyBet booking code via Betpaddi ────────────
+    // Runs after save — non-blocking, failure doesn't break the acca
+    try {
+      const bookingCode = await generateSportyBetCode(cleanSels)
+      if (bookingCode) {
+        const { error: codeErr } = await db()
+          .from('daily_accumulators')
+          .update({ booking_code: bookingCode })
+          .eq('id', saved.id)
+        if (!codeErr) {
+          saved.booking_code = bookingCode
+          console.log(`[Acca] 🎫 Booking code saved: ${bookingCode}`)
+        } else {
+          console.warn('[Acca] Failed to save booking code:', codeErr.message)
+        }
+      }
+    } catch (codeGenErr) {
+      console.warn('[Acca] Booking code generation failed (non-fatal):', codeGenErr.message)
+    }
+
     return json(201, saved)
 
   } catch (err) {
