@@ -10,7 +10,7 @@ const API_BASE   = 'https://v3.football.api-sports.io'
 const SB_URL     = process.env.SUPABASE_URL
 const SB_KEY     = process.env.SUPABASE_SERVICE_ROLE_KEY
 const TARGET_MIN = 1.70, TARGET_MAX = 2.00
-const ODDS_MIN   = 1.15, ODDS_MAX   = 1.65, PROB_MIN = 0.55
+const ODDS_MIN   = 1.15, ODDS_MAX   = 1.85, PROB_MIN = 0.50
 const LEAGUE_IDS = new Set([39,140,78,135,61,2,3,197,529,94])
 const MARKET_LABELS = {
   'Match Winner':'1X2 (Match Result)','Double Chance':'Double Chance',
