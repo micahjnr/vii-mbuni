@@ -9,8 +9,8 @@ const API_KEY    = process.env.API_FOOTBALL_KEY
 const API_BASE   = 'https://v3.football.api-sports.io'
 const SB_URL     = process.env.SUPABASE_URL
 const SB_KEY     = process.env.SUPABASE_SERVICE_ROLE_KEY
-const TARGET_MIN = 1.80, TARGET_MAX = 2.00
-const ODDS_MIN   = 1.15, ODDS_MAX   = 1.70, PROB_MIN = 0.55
+const TARGET_MIN = 1.70, TARGET_MAX = 2.00
+const ODDS_MIN   = 1.15, ODDS_MAX   = 1.55, PROB_MIN = 0.60
 const LEAGUE_IDS = new Set([39,140,78,135,61,2,3,197,529,94])
 const MARKET_LABELS = {
   'Match Winner':'1X2 (Match Result)','Double Chance':'Double Chance',
@@ -70,7 +70,7 @@ async function run() {
   const valid=picks=>new Set(picks.map(p=>p.matchId)).size===picks.length
   let result=null
   outer: for(let i=0;i<pool.length-2;i++) for(let j=i+1;j<pool.length-1;j++) {
-    if(pool[i].odds*pool[j].odds>TARGET_MAX) continue
+    if(pool[i].odds*pool[j].odds*ODDS_MIN>TARGET_MAX) continue
     for(let k=j+1;k<pool.length;k++){
       const t=[pool[i],pool[j],pool[k]]; if(!valid(t)) continue
       const tot=co(t); if(tot>=TARGET_MIN&&tot<=TARGET_MAX){result={selections:t,total_odds:tot};break outer}
