@@ -18,12 +18,12 @@ const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
 
 // ── Accumulator target window ─────────────────────────────────────
 const TARGET_MIN = 1.80
-const TARGET_MAX = 1.90
+const TARGET_MAX = 2.00
 
 // ── Per-pick filter thresholds ────────────────────────────────────
-const PICK_ODDS_MIN  = 1.05
-const PICK_ODDS_MAX  = 1.55
-const PROB_THRESHOLD = 0.64   // 1 / 1.55 ≈ 0.645
+const PICK_ODDS_MIN  = 1.15
+const PICK_ODDS_MAX  = 1.70
+const PROB_THRESHOLD = 0.55   // 1 / 1.82 ≈ 0.55
 
 // ── League IDs to scan (API-Football league IDs) ──────────────────
 // These cover the most active leagues with odds data on the free plan.
@@ -322,7 +322,7 @@ async function generateDailyAccumulator() {
   const avgProb    = result.selections.reduce((a, b) => a + b.probability, 0) / result.selections.length
   const confidence = Math.min(85, Math.max(70, Math.round(avgProb * 100)))
   const analysis   = buildAnalysis(result.selections, result.total_odds, confidence)
-  const cleanSels  = result.selections.map(({ _score, matchId, ...sel }) => sel)
+  const cleanSels  = result.selections.map(({ _score, matchId, ...sel }) => ({ ...sel, fixture_id: matchId }))
 
   // 5. Save
   const { data: saved, error } = await db
