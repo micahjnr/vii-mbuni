@@ -71,7 +71,9 @@ const ODDS_API_SPORTS = [
 ]
 
 async function fetchOddsApiSport(sport) {
-  const url = `https://api.the-odds-api.com/v4/sports/${sport}/odds/?apiKey=${ODDS_API_KEY}&regions=eu&markets=h2h,totals,btts&oddsFormat=decimal`
+  // regions=eu,uk,us — casting a wider net so the free plan finds bookmakers.
+  // EU-only often returns empty on the free tier; UK (Bet365) and US (DraftKings) have broader coverage.
+  const url = `https://api.the-odds-api.com/v4/sports/${sport}/odds/?apiKey=${ODDS_API_KEY}&regions=eu,uk,us&markets=h2h,totals,btts&oddsFormat=decimal`
   const res = await fetch(url)
   const rem = res.headers.get('x-requests-remaining')
   console.log(`[OddsAPI] ${sport} remaining=${rem}`)
@@ -89,8 +91,8 @@ async function fetchOddsApiSport(sport) {
 }
 
 function extractOddsApiCandidates(games, sport) {
-  const now   = Date.now()
-  const in48h = now + 72 * 3600 * 1000
+  const now    = Date.now()
+  const in5d   = now + 5 * 24 * 3600 * 1000  // 5-day window — captures full weekend from midweek
   const league = sport.replace('soccer_', '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
   const LABELS = { h2h: '1X2', totals: 'Over/Under', btts: 'Both Teams To Score' }
   const out = []
@@ -98,7 +100,7 @@ function extractOddsApiCandidates(games, sport) {
 
   for (const game of (games || [])) {
     const t = new Date(game.commence_time).getTime()
-    if (t < now || t > in48h) continue
+    if (t < now || t > in5d) continue
     gamesInWindow++
     const match = `${game.home_team} vs ${game.away_team}`
 
@@ -118,7 +120,7 @@ function extractOddsApiCandidates(games, sport) {
       break // one bookmaker per game is enough
     }
   }
-  if (out.length === 0) console.warn(`[OddsAPI] ${sport}: ${gamesInWindow} games in window, ${oddsOutOfRange} odds outside ${PICK_MIN}–${PICK_MAX} range → 0 candidates`)
+  if (out.length === 0) console.warn(`[OddsAPI] ${sport}: ${(games||[]).length} total games from API, ${gamesInWindow} in 5-day window, ${oddsOutOfRange} odds outside ${PICK_MIN}–${PICK_MAX} → 0 candidates`)
   return out
 }
 
