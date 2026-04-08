@@ -22,8 +22,8 @@ const TARGET_MAX = 2.00
 
 // ── Per-pick filter thresholds ────────────────────────────────────
 const PICK_ODDS_MIN  = 1.15
-const PICK_ODDS_MAX  = 1.55   // cap per-pick so 2-folds can land in 1.70–2.00
-const PROB_THRESHOLD = 0.60   // ≥60% win probability keeps picks confident
+const PICK_ODDS_MAX  = 1.65   // cap per-pick so 2-folds can land in 1.70–2.00
+const PROB_THRESHOLD = 0.55   // ≥60% win probability keeps picks confident
 
 // ── League IDs to scan (API-Football league IDs) ──────────────────
 // These cover the most active leagues with odds data on the free plan.
