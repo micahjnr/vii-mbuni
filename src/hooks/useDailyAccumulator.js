@@ -30,12 +30,15 @@ async function triggerGenerate() {
   return body
 }
 
-// ── Update result ─────────────────────────────────────────────────
-async function patchResult({ id, status }) {
+// ── PATCH result (status and/or booking_code) ─────────────────────
+async function patchResult({ id, status, booking_code }) {
+  const payload = {}
+  if (status !== undefined)       payload.status       = status
+  if (booking_code !== undefined) payload.booking_code = booking_code
   const res = await fetch(`${BASE}/daily-accumulator-result?id=${id}`, {
     method:  'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ status }),
+    body:    JSON.stringify(payload),
   })
   const body = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(body.error || `Update failed (${res.status})`)
@@ -59,12 +62,9 @@ export function useGenerateAccumulator() {
   return useMutation({
     mutationFn: triggerGenerate,
     onSuccess: (data) => {
-      // If the server returned the full acca record, inject it directly into
-      // the cache so the UI updates instantly without waiting for a refetch.
       if (data?.id && data?.selections) {
         qc.setQueryData(['daily-accumulator', 'today'], data)
       } else {
-        // "Already generated today" — force a fresh fetch from Supabase
         qc.refetchQueries({ queryKey: ['daily-accumulator'] })
       }
       toast.success('Accumulator ready!')
@@ -81,6 +81,20 @@ export function useUpdateAccumulatorResult() {
       qc.invalidateQueries({ queryKey: ['daily-accumulator'] })
       qc.refetchQueries({ queryKey: ['daily-accumulator'] })
       toast.success(`Marked as ${data.status === 'won' ? '✅ Won' : '❌ Lost'}`)
+    },
+    onError: (err) => toast.error(err.message),
+  })
+}
+
+// ── Save SportyBet booking code ───────────────────────────────────
+export function useUpdateBookingCode() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, booking_code }) => patchResult({ id, booking_code }),
+    onSuccess: (data) => {
+      qc.setQueryData(['daily-accumulator', 'today'], data)
+      qc.invalidateQueries({ queryKey: ['daily-accumulator'] })
+      toast.success('Booking code saved! 🎯')
     },
     onError: (err) => toast.error(err.message),
   })
