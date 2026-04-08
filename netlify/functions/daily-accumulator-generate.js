@@ -349,34 +349,20 @@ function buildAccu(rawCandidates) {
 
   const pool   = [...deduped].sort((a, b) => b.prob - a.prob).slice(0, 60)
   const co     = picks => +picks.reduce((a, p) => a * p.odds, 1).toFixed(3)
-  // Unique underlying game (strip suffixes added for DC/Over synthetic picks)
-  const baseId = id => String(id).replace(/-dc$|-o05$|-aw$|-o25$|-btts$/, '')
 
-  // Validate: unique games AND at least 2 different markets (avoid all-same-market accas)
-  const valid = picks => {
-    const uniqueGames   = new Set(picks.map(p => baseId(p.matchId))).size === picks.length
-    const uniqueMarkets = new Set(picks.map(p => p.market)).size >= Math.min(2, picks.length)
-    return uniqueGames && uniqueMarkets
-  }
+  // Strip ALL synthetic suffixes to get the real underlying game ID
+  const baseId = id => String(id).replace(/-(dc|o05|aw|o25|btts|o15|1x|fd\d*)$/, '').replace(/^fd-/, '').split('-')[0]
 
-  // ── Pass 1: 3-folds in target band with mixed markets ─────────────
-  for (let i = 0; i < pool.length - 2; i++) {
-    for (let j = i + 1; j < pool.length - 1; j++) {
-      const ijOdds = pool[i].odds * pool[j].odds
-      if (ijOdds * PICK_MIN > TARGET_MAX) continue  // even the cheapest 3rd pick would bust
-      if (ijOdds * PICK_MAX < TARGET_MIN) continue  // even the most expensive 3rd pick won't reach
-      for (let k = j + 1; k < pool.length; k++) {
-        const t = [pool[i], pool[j], pool[k]]
-        if (!valid(t)) continue
-        const total = co(t)
-        if (total >= TARGET_MIN && total <= TARGET_MAX) return { selections: t, total_odds: total }
-      }
-    }
-  }
+  // Full validation: unique games + mixed markets + ideally different leagues
+  const uniqueGames  = picks => new Set(picks.map(p => baseId(p.matchId))).size === picks.length
+  const mixedMarkets = picks => new Set(picks.map(p => p.market)).size >= 2
+  const mixedLeagues = picks => new Set(picks.map(p => p.league)).size >= 2
 
-  // ── Pass 2: 3-folds in target band, relax mixed-market requirement ─
-  // (allow same market if no mixed combo exists, but still require unique games)
-  const validGamesOnly = picks => new Set(picks.map(p => baseId(p.matchId))).size === picks.length
+  const validBest    = picks => uniqueGames(picks) && mixedMarkets(picks) && mixedLeagues(picks)
+  const validGood    = picks => uniqueGames(picks) && mixedMarkets(picks)
+  const validMinimal = picks => uniqueGames(picks)
+
+  // ── Pass 1: 3-folds in target band — mixed markets + different leagues ──
   for (let i = 0; i < pool.length - 2; i++) {
     for (let j = i + 1; j < pool.length - 1; j++) {
       const ijOdds = pool[i].odds * pool[j].odds
@@ -384,14 +370,44 @@ function buildAccu(rawCandidates) {
       if (ijOdds * PICK_MAX < TARGET_MIN) continue
       for (let k = j + 1; k < pool.length; k++) {
         const t = [pool[i], pool[j], pool[k]]
-        if (!validGamesOnly(t)) continue
+        if (!validBest(t)) continue
         const total = co(t)
         if (total >= TARGET_MIN && total <= TARGET_MAX) return { selections: t, total_odds: total }
       }
     }
   }
 
-  // ── Pass 3: Best 3-fold closest to target band (mixed markets preferred) ─
+  // ── Pass 2: 3-folds in target band — mixed markets, same league ok ───
+  for (let i = 0; i < pool.length - 2; i++) {
+    for (let j = i + 1; j < pool.length - 1; j++) {
+      const ijOdds = pool[i].odds * pool[j].odds
+      if (ijOdds * PICK_MIN > TARGET_MAX) continue
+      if (ijOdds * PICK_MAX < TARGET_MIN) continue
+      for (let k = j + 1; k < pool.length; k++) {
+        const t = [pool[i], pool[j], pool[k]]
+        if (!validGood(t)) continue
+        const total = co(t)
+        if (total >= TARGET_MIN && total <= TARGET_MAX) return { selections: t, total_odds: total }
+      }
+    }
+  }
+
+  // ── Pass 3: 3-folds in target band — unique games only ───────────────
+  for (let i = 0; i < pool.length - 2; i++) {
+    for (let j = i + 1; j < pool.length - 1; j++) {
+      const ijOdds = pool[i].odds * pool[j].odds
+      if (ijOdds * PICK_MIN > TARGET_MAX) continue
+      if (ijOdds * PICK_MAX < TARGET_MIN) continue
+      for (let k = j + 1; k < pool.length; k++) {
+        const t = [pool[i], pool[j], pool[k]]
+        if (!validMinimal(t)) continue
+        const total = co(t)
+        if (total >= TARGET_MIN && total <= TARGET_MAX) return { selections: t, total_odds: total }
+      }
+    }
+  }
+
+  // ── Pass 4: Closest valid 3-fold to band midpoint — NEVER a 2-fold ───
   let bestMixed = null, bestMixedDist = Infinity
   let bestAny   = null, bestAnyDist   = Infinity
   const midTarget = (TARGET_MIN + TARGET_MAX) / 2
@@ -400,16 +416,15 @@ function buildAccu(rawCandidates) {
     for (let j = i + 1; j < pool.length - 1; j++) {
       for (let k = j + 1; k < pool.length; k++) {
         const t = [pool[i], pool[j], pool[k]]
-        if (!validGamesOnly(t)) continue
+        if (!validMinimal(t)) continue
         const total = co(t)
         const dist  = Math.abs(total - midTarget)
         if (dist < bestAnyDist) { bestAny = { selections: t, total_odds: total }; bestAnyDist = dist }
-        if (valid(t) && dist < bestMixedDist) { bestMixed = { selections: t, total_odds: total }; bestMixedDist = dist }
+        if (validGood(t) && dist < bestMixedDist) { bestMixed = { selections: t, total_odds: total }; bestMixedDist = dist }
       }
     }
   }
 
-  // Prefer mixed-market 3-fold, fall back to any 3-fold — NEVER return a 2-fold
   return bestMixed || bestAny || null
 }
 
@@ -466,10 +481,13 @@ async function getCandidatesFromFootballData() {
     const matches = data.matches || []
     console.log(`[FD] ${comp}: ${matches.length} upcoming matches`)
 
-    for (const m of matches.slice(0, 5)) {
+    // Cap at 2 per competition — ensures ALL leagues contribute candidates
+    // so the builder can find cross-league 3-folds
+    for (const m of matches.slice(0, 2)) {
       const home   = m.homeTeam?.name || 'Home'
       const away   = m.awayTeam?.name || 'Away'
       const match  = `${home} vs ${away}`
+      // Always use the competition's real name for proper league diversity checking
       const league = m.competition?.name || comp
       const id     = m.id
 
@@ -487,7 +505,7 @@ async function getCandidatesFromFootballData() {
       if (ho.over15 >= PICK_MIN && ho.over15 <= PICK_MAX)
         candidates.push({ matchId: `fd-${id}-o15`, match, league, market: 'Over/Under', pick: 'Over 1.5 Goals', odds: ho.over15, prob: +(1/ho.over15).toFixed(4) })
     }
-    if (candidates.length >= 20) break
+    // No early break — iterate ALL competitions so we always have cross-league candidates
     await sleep(300)
   }
   console.log(`[FD] ${candidates.length} synthetic candidates from ${FD_KEY ? 'authenticated' : 'unauthenticated'} requests`)
