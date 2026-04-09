@@ -15,7 +15,7 @@ const API_FOOTBALL_KEY  = process.env.API_FOOTBALL_KEY   // from dashboard.api-f
 const API_BASE          = 'https://v3.football.api-sports.io'
 const SUPABASE_URL      = process.env.SUPABASE_URL
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
-const BETPADDI_KEY      = process.env.BETPADDI_API_KEY || 'BP-93c1e524766b17dee7ca14963d0d4f5c1364933e80b2957b'
+const BETPADDI_KEY      = process.env.BETPADDI_API_KEY
 
 // ── Accumulator target window ─────────────────────────────────────
 const TARGET_MIN = 1.70
