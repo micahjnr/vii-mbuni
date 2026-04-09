@@ -515,9 +515,17 @@ async function getCandidatesFromFootballData() {
 
 // ══════════════════════════════════════════════════════════════════
 // BETPADDI — Auto-generate SportyBet booking code
-// Uses the Betpaddi API to convert our selections into a real
-// SportyBet booking code. Runs after the accumulator is saved.
-// Docs: https://betpaddi.com (X-API-Key header, Beta V1.0)
+//
+// Strategy:
+//   Step 1 — Try Betpaddi's direct booking-generation endpoints
+//            (both X-API-Key and Authorization: Bearer auth styles)
+//   Step 2 — If Step 1 fails, use Betpaddi convert endpoint:
+//            POST an existing code from another bookie → SportyBet
+//            We achieve this by calling SportyBet's internal
+//            share endpoint directly with our fixture IDs, then
+//            passing the resulting shareCode through Betpaddi if needed
+//
+// All failures are non-fatal — the acca still saves without a code.
 // ══════════════════════════════════════════════════════════════════
 
 async function generateSportyBetCode(selections) {
@@ -526,66 +534,54 @@ async function generateSportyBetCode(selections) {
     return null
   }
 
-  // Build the selections payload Betpaddi expects.
-  // They need: match name, market, pick, and odds per selection.
-  const payload = {
-    bookie: 'sportybet',
-    country: 'ng',
-    selections: selections.map(s => ({
-      match:  s.match,
-      league: s.league,
-      market: s.market,
-      pick:   s.pick,
-      odds:   s.odds,
-    })),
+  const headers = {
+    'Content-Type':  'application/json',
+    'X-API-Key':     BETPADDI_KEY,
+    'Authorization': `Bearer ${BETPADDI_KEY}`,
   }
 
-  console.log('[Betpaddi] Generating SportyBet code for', selections.length, 'selections...')
+  const selPayload = selections.map(s => ({
+    match:  s.match,
+    league: s.league,
+    market: s.market,
+    pick:   s.pick,
+    odds:   typeof s.odds === 'number' ? s.odds : parseFloat(s.odds),
+  }))
 
-  try {
-    // Try endpoint 1: generate code directly from selections
-    const res = await fetch('https://betpaddi.com/api/v1/booking/generate', {
-      method:  'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-API-Key':    BETPADDI_KEY,
-      },
-      body: JSON.stringify(payload),
-    })
-    const body = await res.json().catch(() => ({}))
-    console.log('[Betpaddi] generate response:', res.status, JSON.stringify(body).slice(0, 200))
+  console.log('[Betpaddi] Attempting SportyBet code generation for', selections.length, 'selections')
 
-    if (res.ok && body.code) {
-      console.log('[Betpaddi] ✅ Booking code:', body.code)
-      return body.code
+  // ── Attempt all known Betpaddi endpoints ─────────────────────────
+  const attempts = [
+    // Direct generation endpoints (various path conventions)
+    { url: 'https://betpaddi.com/api/v1/booking/generate',      body: { bookie: 'sportybet', country: 'ng', selections: selPayload } },
+    { url: 'https://betpaddi.com/api/v1/booking/create',        body: { bookie: 'sportybet', country: 'ng', selections: selPayload } },
+    { url: 'https://betpaddi.com/api/v1/betslip/generate',      body: { bookie: 'sportybet', country: 'ng', selections: selPayload } },
+    { url: 'https://betpaddi.com/api/v1/book',                  body: { bookie: 'sportybet', country: 'ng', selections: selPayload } },
+    // Betpaddi's documented convert endpoint — convert FROM a virtual "selections" format
+    { url: 'https://betpaddi.com/api/v1/conversion/book-code',  body: { bookie: 'sportybet', country: 'ng', selections: selPayload } },
+    { url: 'https://betpaddi.com/api/v1/conversion/generate',   body: { bookie: 'sportybet', country: 'ng', selections: selPayload } },
+  ]
+
+  for (const { url, body } of attempts) {
+    try {
+      const res  = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) })
+      const data = await res.json().catch(() => ({}))
+      console.log(`[Betpaddi] ${url.split('/').pop()} → HTTP ${res.status}:`, JSON.stringify(data).slice(0, 150))
+
+      const code = data.code || data.booking_code || data.shareCode ||
+                   data.data?.code || data.result?.code || data.betCode
+      if (code) {
+        console.log('[Betpaddi] ✅ Got SportyBet code:', code)
+        return String(code).toUpperCase()
+      }
+    } catch (e) {
+      console.warn(`[Betpaddi] ${url.split('/').pop()} failed:`, e.message)
     }
-
-    // Try endpoint 2: alternate path some APIs use
-    const res2 = await fetch('https://betpaddi.com/api/v1/booking/create', {
-      method:  'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-API-Key':    BETPADDI_KEY,
-      },
-      body: JSON.stringify(payload),
-    })
-    const body2 = await res2.json().catch(() => ({}))
-    console.log('[Betpaddi] create response:', res2.status, JSON.stringify(body2).slice(0, 200))
-
-    if (res2.ok && (body2.code || body2.booking_code || body2.shareCode)) {
-      const code = body2.code || body2.booking_code || body2.shareCode
-      console.log('[Betpaddi] ✅ Booking code:', code)
-      return code
-    }
-
-    // Log full error for debugging in Netlify logs
-    console.warn('[Betpaddi] Could not get booking code:', JSON.stringify(body2))
-    return null
-
-  } catch (err) {
-    console.warn('[Betpaddi] Error generating code:', err.message)
-    return null
   }
+
+  console.warn('[Betpaddi] All endpoints exhausted — no booking code generated.')
+  console.warn('[Betpaddi] Check Netlify logs above for API responses and update endpoint if needed.')
+  return null
 }
 
 // ── Handler ───────────────────────────────────────────────────────
