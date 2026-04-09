@@ -15,6 +15,7 @@ const API_FOOTBALL_KEY  = process.env.API_FOOTBALL_KEY   // from dashboard.api-f
 const API_BASE          = 'https://v3.football.api-sports.io'
 const SUPABASE_URL      = process.env.SUPABASE_URL
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
+const BETPADDI_KEY      = process.env.BETPADDI_API_KEY || 'BP-93c1e524766b17dee7ca14963d0d4f5c1364933e80b2957b'
 
 // ── Accumulator target window ─────────────────────────────────────
 const TARGET_MIN = 1.70
@@ -310,6 +311,51 @@ function buildAnalysis(selections, total_odds, confidence) {
 // MAIN
 // ─────────────────────────────────────────────────────────────────
 
+// ══════════════════════════════════════════════════════════════════
+// BETPADDI — Auto-generate SportyBet booking code
+// ══════════════════════════════════════════════════════════════════
+async function generateSportyBetCode(selections) {
+  if (!BETPADDI_KEY) return null
+
+  const headers = {
+    'Content-Type':  'application/json',
+    'X-API-Key':     BETPADDI_KEY,
+    'Authorization': `Bearer ${BETPADDI_KEY}`,
+  }
+  const selPayload = selections.map(s => ({
+    match:  s.match,
+    league: s.league,
+    market: s.market,
+    pick:   s.pick,
+    odds:   typeof s.odds === 'number' ? s.odds : parseFloat(s.odds),
+  }))
+
+  console.log('[Betpaddi] Attempting SportyBet code generation for', selections.length, 'selections')
+
+  const attempts = [
+    { url: 'https://betpaddi.com/api/v1/booking/generate',     body: { bookie: 'sportybet', country: 'ng', selections: selPayload } },
+    { url: 'https://betpaddi.com/api/v1/booking/create',       body: { bookie: 'sportybet', country: 'ng', selections: selPayload } },
+    { url: 'https://betpaddi.com/api/v1/betslip/generate',     body: { bookie: 'sportybet', country: 'ng', selections: selPayload } },
+    { url: 'https://betpaddi.com/api/v1/book',                 body: { bookie: 'sportybet', country: 'ng', selections: selPayload } },
+    { url: 'https://betpaddi.com/api/v1/conversion/book-code', body: { bookie: 'sportybet', country: 'ng', selections: selPayload } },
+    { url: 'https://betpaddi.com/api/v1/conversion/generate',  body: { bookie: 'sportybet', country: 'ng', selections: selPayload } },
+  ]
+
+  for (const { url, body } of attempts) {
+    try {
+      const res  = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) })
+      const data = await res.json().catch(() => ({}))
+      console.log(`[Betpaddi] ${url.split('/').pop()} → HTTP ${res.status}:`, JSON.stringify(data).slice(0, 150))
+      const code = data.code || data.booking_code || data.shareCode ||
+                   data.data?.code || data.result?.code || data.betCode
+      if (code) { console.log('[Betpaddi] ✅ Got SportyBet code:', code); return String(code).toUpperCase() }
+    } catch (e) { console.warn(`[Betpaddi] ${url.split('/').pop()} failed:`, e.message) }
+  }
+
+  console.warn('[Betpaddi] All endpoints exhausted. Check Netlify function logs for API responses.')
+  return null
+}
+
 async function generateDailyAccumulator() {
   if (!API_FOOTBALL_KEY) throw new Error('API_FOOTBALL_KEY is not set in environment variables.')
   if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) throw new Error('Supabase env vars missing.')
@@ -380,8 +426,21 @@ async function generateDailyAccumulator() {
     .select().single()
 
   if (error) throw new Error(`Supabase insert failed: ${error.message}`)
-
   console.log(`[Acca] ✅ Saved ${saved.id} — odds: ${saved.total_odds}, confidence: ${saved.confidence}`)
+
+  // ── Auto-generate SportyBet booking code via Betpaddi ────────────
+  try {
+    const bookingCode = await generateSportyBetCode(cleanSels)
+    if (bookingCode) {
+      const { error: codeErr } = await db
+        .from('daily_accumulators')
+        .update({ booking_code: bookingCode })
+        .eq('id', saved.id)
+      if (!codeErr) { saved.booking_code = bookingCode; console.log(`[Acca] 🎫 Booking code: ${bookingCode}`) }
+      else console.warn('[Acca] Failed to save booking code:', codeErr.message)
+    }
+  } catch (e) { console.warn('[Acca] Booking code generation failed (non-fatal):', e.message) }
+
   return saved
 }
 
