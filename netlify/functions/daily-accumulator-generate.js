@@ -54,8 +54,8 @@ const TARGET_MIN = 1.70   // target combined accumulator band
 const TARGET_MAX = 2.50   // target combined accumulator band
 // For a 3-fold: ∛1.70 ≈ 1.19, ∛2.50 ≈ 1.36 — so per-pick range must be tight
 const PICK_MIN   = 1.10
-const PICK_MAX   = 1.45   // ∛2.50 ≈ 1.357 — hard cap so 3 picks never exceed ~3.05 (with spread)
-const PROB_MIN   = 0.55   // ≥55% implied probability — confident, value picks only
+const PICK_MAX   = 1.60   // raised: allows picks up to 1.60 so 3-folds can reach 1.70+ target
+const PROB_MIN   = 0.50   // ≥50% implied probability — widened to give more candidates
 
 function todayISO() { return new Date().toISOString().slice(0, 10) }
 function db()       { return createClient(SB_URL, SB_KEY) }
@@ -408,7 +408,45 @@ function buildAccu(rawCandidates) {
     }
   }
 
-  // ── Pass 4: Closest valid 3-fold to band midpoint — NEVER a 2-fold ───
+  // ── Pass 4: 4-folds in target band — mixed markets + different leagues ──
+  for (let i = 0; i < pool.length - 3; i++) {
+    for (let j = i + 1; j < pool.length - 2; j++) {
+      const ijOdds = pool[i].odds * pool[j].odds
+      if (ijOdds < 1.05) continue
+      for (let k = j + 1; k < pool.length - 1; k++) {
+        const ijkOdds = ijOdds * pool[k].odds
+        if (ijkOdds * PICK_MIN > TARGET_MAX) continue
+        if (ijkOdds * PICK_MAX < TARGET_MIN) continue
+        for (let l = k + 1; l < pool.length; l++) {
+          const t = [pool[i], pool[j], pool[k], pool[l]]
+          if (!validBest(t)) continue
+          const total = co(t)
+          if (total >= TARGET_MIN && total <= TARGET_MAX) return { selections: t, total_odds: total }
+        }
+      }
+    }
+  }
+
+  // ── Pass 5: 4-folds in target band — unique games only ───────────────
+  for (let i = 0; i < pool.length - 3; i++) {
+    for (let j = i + 1; j < pool.length - 2; j++) {
+      const ijOdds = pool[i].odds * pool[j].odds
+      if (ijOdds < 1.05) continue
+      for (let k = j + 1; k < pool.length - 1; k++) {
+        const ijkOdds = ijOdds * pool[k].odds
+        if (ijkOdds * PICK_MIN > TARGET_MAX) continue
+        if (ijkOdds * PICK_MAX < TARGET_MIN) continue
+        for (let l = k + 1; l < pool.length; l++) {
+          const t = [pool[i], pool[j], pool[k], pool[l]]
+          if (!validMinimal(t)) continue
+          const total = co(t)
+          if (total >= TARGET_MIN && total <= TARGET_MAX) return { selections: t, total_odds: total }
+        }
+      }
+    }
+  }
+
+  // ── Pass 6: Closest valid combo to band midpoint — 3-fold or 4-fold ──
   let bestMixed = null, bestMixedDist = Infinity
   let bestAny   = null, bestAnyDist   = Infinity
   const midTarget = (TARGET_MIN + TARGET_MAX) / 2
@@ -422,6 +460,22 @@ function buildAccu(rawCandidates) {
         const dist  = Math.abs(total - midTarget)
         if (dist < bestAnyDist) { bestAny = { selections: t, total_odds: total }; bestAnyDist = dist }
         if (validGood(t) && dist < bestMixedDist) { bestMixed = { selections: t, total_odds: total }; bestMixedDist = dist }
+      }
+    }
+  }
+
+  // Also try 4-folds in fallback — may be closer to midpoint
+  for (let i = 0; i < Math.min(pool.length - 3, 20); i++) {
+    for (let j = i + 1; j < Math.min(pool.length - 2, 21); j++) {
+      for (let k = j + 1; k < Math.min(pool.length - 1, 22); k++) {
+        for (let l = k + 1; l < Math.min(pool.length, 23); l++) {
+          const t = [pool[i], pool[j], pool[k], pool[l]]
+          if (!validMinimal(t)) continue
+          const total = co(t)
+          const dist  = Math.abs(total - midTarget)
+          if (dist < bestAnyDist) { bestAny = { selections: t, total_odds: total }; bestAnyDist = dist }
+          if (validGood(t) && dist < bestMixedDist) { bestMixed = { selections: t, total_odds: total }; bestMixedDist = dist }
+        }
       }
     }
   }
@@ -452,10 +506,10 @@ async function fdFetch(path) {
 // We use higher probability baselines so the implied odds stay ≤ PICK_MAX (1.45).
 // Home win: ~70%, Draw/Away excluded (too low prob). Over 1.5 Goals: ~80%. 1X: ~82%.
 function syntheticOdds(isHome) {
-  const homeWinProb = 0.68   // ~68% home win → odds ≈ 1.40
-  const overProb    = 0.78   // Over 1.5 Goals hits ~80% in top leagues → odds ≈ 1.22
-  const oneXProb    = 0.80   // Home or Draw (1X) → odds ≈ 1.19
-  const bttsProb    = 0.62   // BTTS Yes → odds ≈ 1.53 (just above max, filtered out)
+  const homeWinProb = 0.65   // ~65% home win → odds ≈ 1.46
+  const overProb    = 0.72   // Over 1.5 Goals → odds ≈ 1.32
+  const oneXProb    = 0.75   // Home or Draw (1X) → odds ≈ 1.27
+  const bttsProb    = 0.60   // BTTS Yes → odds ≈ 1.58
   // Apply 5% bookmaker margin
   return {
     homeWin: parseFloat((1 / (homeWinProb * 1.05)).toFixed(2)),
