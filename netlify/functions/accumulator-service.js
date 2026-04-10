@@ -22,10 +22,14 @@ const TARGET_MIN = 1.70
 const TARGET_MAX = 2.50
 
 // ── Per-pick filter thresholds ────────────────────────────────────
-// For a 3-fold: ∛1.70 ≈ 1.19, ∛2.50 ≈ 1.36 — per-pick must stay tight
+// Target: 1.70–2.50 combined across 3–4 picks
+// For a 3-fold hitting 1.70+: each pick must average ≥ ∛1.70 ≈ 1.19
+// For a 4-fold hitting 1.70+: each pick must average ≥ ⁴√1.70 ≈ 1.14
+// Raising PICK_ODDS_MAX to 1.60 gives the algorithm enough range to reach 1.70+
+// while the TARGET_MIN/MAX cap ensures we never overshoot 2.50.
 const PICK_ODDS_MIN  = 1.10
-const PICK_ODDS_MAX  = 1.45   // hard cap: 1.45³ = 3.05, with varied picks we land in 1.70–2.50
-const PROB_THRESHOLD = 0.55   // ≥55% implied probability — confident picks only
+const PICK_ODDS_MAX  = 1.60   // raised: 1.19³ = 1.69, 1.35³ = 2.46 — right in target band
+const PROB_THRESHOLD = 0.50   // ≥50% implied probability (relaxed slightly to widen candidate pool)
 
 // ── League IDs to scan (API-Football league IDs) ──────────────────
 // These cover the most active leagues with odds data on the free plan.
@@ -273,11 +277,50 @@ function buildAccumulator(candidates) {
     }
   }
 
-  // ── Pass 4: Closest valid 3-fold to midpoint — NEVER 2-fold ─────────
+  // ── Pass 4: 4-folds in target band — mixed markets + different leagues ──
+  for (let i = 0; i < pool.length - 3; i++) {
+    for (let j = i + 1; j < pool.length - 2; j++) {
+      const ijOdds = pool[i].odds * pool[j].odds
+      if (ijOdds < 1.05) continue // prune: too low to build on
+      for (let k = j + 1; k < pool.length - 1; k++) {
+        const ijkOdds = ijOdds * pool[k].odds
+        if (ijkOdds * PICK_ODDS_MIN > TARGET_MAX) continue
+        if (ijkOdds * PICK_ODDS_MAX < TARGET_MIN) continue
+        for (let l = k + 1; l < pool.length; l++) {
+          const quad = [pool[i], pool[j], pool[k], pool[l]]
+          if (!validCombo(quad)) continue
+          const total = combinedOdds(quad)
+          if (total >= TARGET_MIN && total <= TARGET_MAX) return { selections: quad, total_odds: total }
+        }
+      }
+    }
+  }
+
+  // ── Pass 5: 4-folds in target band — unique games only ──────────────
+  for (let i = 0; i < pool.length - 3; i++) {
+    for (let j = i + 1; j < pool.length - 2; j++) {
+      const ijOdds = pool[i].odds * pool[j].odds
+      if (ijOdds < 1.05) continue
+      for (let k = j + 1; k < pool.length - 1; k++) {
+        const ijkOdds = ijOdds * pool[k].odds
+        if (ijkOdds * PICK_ODDS_MIN > TARGET_MAX) continue
+        if (ijkOdds * PICK_ODDS_MAX < TARGET_MIN) continue
+        for (let l = k + 1; l < pool.length; l++) {
+          const quad = [pool[i], pool[j], pool[k], pool[l]]
+          if (!validGamesOnly(quad)) continue
+          const total = combinedOdds(quad)
+          if (total >= TARGET_MIN && total <= TARGET_MAX) return { selections: quad, total_odds: total }
+        }
+      }
+    }
+  }
+
+  // ── Pass 6: Closest valid combo to midpoint — 3-fold or 4-fold ──────
   const midTarget = (TARGET_MIN + TARGET_MAX) / 2
   let bestMixed = null, bestMixedDist = Infinity
   let bestAny   = null, bestAnyDist   = Infinity
 
+  // Try 3-folds
   for (let i = 0; i < pool.length - 2; i++) {
     for (let j = i + 1; j < pool.length - 1; j++) {
       for (let k = j + 1; k < pool.length; k++) {
@@ -287,6 +330,22 @@ function buildAccumulator(candidates) {
         const dist  = Math.abs(total - midTarget)
         if (dist < bestAnyDist) { bestAny = { selections: trio, total_odds: total }; bestAnyDist = dist }
         if (validCombo(trio) && dist < bestMixedDist) { bestMixed = { selections: trio, total_odds: total }; bestMixedDist = dist }
+      }
+    }
+  }
+
+  // Try 4-folds (may get closer to target than 3-folds)
+  for (let i = 0; i < Math.min(pool.length - 3, 20); i++) {
+    for (let j = i + 1; j < Math.min(pool.length - 2, 21); j++) {
+      for (let k = j + 1; k < Math.min(pool.length - 1, 22); k++) {
+        for (let l = k + 1; l < Math.min(pool.length, 23); l++) {
+          const quad = [pool[i], pool[j], pool[k], pool[l]]
+          if (!validGamesOnly(quad)) continue
+          const total = combinedOdds(quad)
+          const dist  = Math.abs(total - midTarget)
+          if (dist < bestAnyDist) { bestAny = { selections: quad, total_odds: total }; bestAnyDist = dist }
+          if (validCombo(quad) && dist < bestMixedDist) { bestMixed = { selections: quad, total_odds: total }; bestMixedDist = dist }
+        }
       }
     }
   }
@@ -301,7 +360,7 @@ function buildAnalysis(selections, total_odds, confidence) {
   return (
     `This ${selections.length}-fold accumulator spans ${leagues}, combining selections across ${markets}. ` +
     `Each pick carries an average implied probability of ${avgProbPc}%, reflecting strong market consensus. ` +
-    `Combined odds of ${total_odds.toFixed(2)} sit within our 1.70–2.00 target window — ` +
+    `Combined odds of ${total_odds.toFixed(2)} sit within our 1.70–2.50 target window — ` +
     `solid value without over-leveraging risk. Confidence: ${confidence}/100. ` +
     `Stake responsibly — this is a data-driven prediction, not a guarantee.`
   )
