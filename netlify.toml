@@ -91,6 +91,10 @@ schedule = "0 8 * * 1"
 [functions."daily-accumulator-cron"]
 schedule = "0 8 * * *"
 
+# Auto-settle — runs at 23:30 UTC daily (after European matches finish)
+[functions."daily-accumulator-settle"]
+schedule = "30 23 * * *"
+
 [functions."daily-accumulator-generate"]
 timeout = 26
 
