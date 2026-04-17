@@ -245,14 +245,26 @@ export default function App() {
         setLoading(false)  // always unblock the app
       })
 
-    // Auth state changes — only re-setup on actual sign in / sign out,
-    // NOT on token refresh (SIGNED_IN fires on refresh too, guard handles it)
+    // Auth state changes — differentiate events to avoid logout races
     const { data: { subscription } } = sb.auth.onAuthStateChange((event, session) => {
+      // TOKEN_REFRESHED: session is still valid — silently update token, do NOT clear user
+      if (event === 'TOKEN_REFRESHED') {
+        if (session?.user) setUser(session.user)
+        return
+      }
+
+      // INITIAL_SESSION: getSession() above already handles this; just clear loading
+      if (event === 'INITIAL_SESSION') {
+        setLoading(false)
+        return
+      }
+
       if (session?.user) {
         setUser(session.user)
         fetchProfile(session.user.id)
         setupForUser(session.user.id) // guarded by setupDoneRef
-      } else {
+      } else if (event === 'SIGNED_OUT') {
+        // Only clear user on an explicit sign-out — not on token refresh gaps
         setUser(null)
         teardown()
         setNotifs([])
