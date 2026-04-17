@@ -1,14 +1,15 @@
 // netlify/functions/daily-accumulator-cron.js
-// Scheduled: runs at 08:00 UTC daily
+// Scheduled: runs at 08:00 UTC daily — generates today's accumulator + booking code
 // [functions."daily-accumulator-cron"]
 // schedule = "0 8 * * *"
 
 const { createClient } = require('@supabase/supabase-js')
 
-const API_KEY    = process.env.API_FOOTBALL_KEY
-const API_BASE   = 'https://v3.football.api-sports.io'
-const SB_URL     = process.env.SUPABASE_URL
-const SB_KEY     = process.env.SUPABASE_SERVICE_ROLE_KEY
+const API_KEY      = process.env.API_FOOTBALL_KEY
+const API_BASE     = 'https://v3.football.api-sports.io'
+const SB_URL       = process.env.SUPABASE_URL
+const SB_KEY       = process.env.SUPABASE_SERVICE_ROLE_KEY
+const BETPADDI_KEY = process.env.BETPADDI_API_KEY   // for SportyBet booking code
 const TARGET_MIN = 1.70, TARGET_MAX = 2.00
 const ODDS_MIN   = 1.15, ODDS_MAX   = 1.85, PROB_MIN = 0.50
 const LEAGUE_IDS = new Set([39,140,78,135,61,2,3,197,529,94])
@@ -27,6 +28,55 @@ async function apiFetch(path) {
   const d = await res.json()
   if (d.errors && Object.keys(d.errors).length) throw new Error(Object.values(d.errors).join(', '))
   return d.response||[]
+}
+
+// ── Auto-generate SportyBet booking code via Betpaddi ────────────
+async function generateSportyBetCode(selections) {
+  if (!BETPADDI_KEY) {
+    console.warn('[Betpaddi] No BETPADDI_API_KEY — skipping booking code')
+    return null
+  }
+
+  const headers = {
+    'Content-Type':  'application/json',
+    'X-API-Key':     BETPADDI_KEY,
+    'Authorization': `Bearer ${BETPADDI_KEY}`,
+  }
+
+  const selPayload = selections.map(s => ({
+    match:  s.match,
+    league: s.league,
+    market: s.market,
+    pick:   s.pick,
+    odds:   typeof s.odds === 'number' ? s.odds : parseFloat(s.odds),
+  }))
+
+  const attempts = [
+    { url: 'https://betpaddi.com/api/v1/booking/generate',     body: { bookie: 'sportybet', country: 'ng', selections: selPayload } },
+    { url: 'https://betpaddi.com/api/v1/booking/create',       body: { bookie: 'sportybet', country: 'ng', selections: selPayload } },
+    { url: 'https://betpaddi.com/api/v1/betslip/generate',     body: { bookie: 'sportybet', country: 'ng', selections: selPayload } },
+    { url: 'https://betpaddi.com/api/v1/book',                 body: { bookie: 'sportybet', country: 'ng', selections: selPayload } },
+    { url: 'https://betpaddi.com/api/v1/conversion/book-code', body: { bookie: 'sportybet', country: 'ng', selections: selPayload } },
+    { url: 'https://betpaddi.com/api/v1/conversion/generate',  body: { bookie: 'sportybet', country: 'ng', selections: selPayload } },
+  ]
+
+  for (const { url, body } of attempts) {
+    try {
+      const res  = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) })
+      const data = await res.json().catch(() => ({}))
+      console.log(`[Betpaddi] ${url.split('/').pop()} → HTTP ${res.status}:`, JSON.stringify(data).slice(0, 150))
+      const code = data.code || data.booking_code || data.shareCode ||
+                   data.data?.code || data.result?.code || data.betCode
+      if (code) {
+        console.log('[Betpaddi] ✅ Got SportyBet code:', code)
+        return String(code).toUpperCase()
+      }
+    } catch (e) {
+      console.warn(`[Betpaddi] ${url.split('/').pop()} failed:`, e.message)
+    }
+  }
+  console.warn('[Betpaddi] All endpoints exhausted — no booking code generated')
+  return null
 }
 
 async function run() {
@@ -94,6 +144,21 @@ async function run() {
     .select().single()
   if(error) throw new Error(error.message)
   console.log(`[Cron] ✅ Saved ${saved.id}`)
+
+  // ── Auto-generate SportyBet booking code via Betpaddi ────────────
+  try {
+    const bookingCode = await generateSportyBetCode(cleanSels)
+    if (bookingCode) {
+      const { error: codeErr } = await db()
+        .from('daily_accumulators')
+        .update({ booking_code: bookingCode })
+        .eq('id', saved.id)
+      if (!codeErr) console.log(`[Cron] 🎫 Booking code saved: ${bookingCode}`)
+      else console.warn('[Cron] Failed to save booking code:', codeErr.message)
+    }
+  } catch (e) {
+    console.warn('[Cron] Booking code generation failed (non-fatal):', e.message)
+  }
 }
 
 exports.handler = async () => {
