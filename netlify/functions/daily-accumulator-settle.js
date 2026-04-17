@@ -263,12 +263,16 @@ async function settleAccumulators() {
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 200, headers: CORS, body: '' }
 
-  // Auth check (same secret as other cron jobs)
-  const secret = process.env.CRON_SECRET
-  if (secret) {
-    const token = (event.headers['authorization'] || event.headers['Authorization'] || '')
-      .replace(/^Bearer\s+/i, '').trim()
-    if (token !== secret) return json(401, { error: 'Unauthorized' })
+  // Scheduled Netlify functions have no HTTP method — allow them through directly.
+  // Manual POST calls require CRON_SECRET for security.
+  const isScheduled = !event.httpMethod || event.httpMethod === 'GET'
+  if (!isScheduled) {
+    const secret = process.env.CRON_SECRET
+    if (secret) {
+      const token = (event.headers['authorization'] || event.headers['Authorization'] || '')
+        .replace(/^Bearer\s+/i, '').trim()
+      if (token !== secret) return json(401, { error: 'Unauthorized' })
+    }
   }
 
   try {
