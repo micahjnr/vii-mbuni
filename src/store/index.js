@@ -39,14 +39,15 @@ export const useAuthStore = create(
           ? { id: s.profile.id, username: s.profile.username, full_name: s.profile.full_name, avatar_url: s.profile.avatar_url, xp: s.profile.xp, streak_days: s.profile.streak_days }
           : null,
       }),
-      // Keep loading=true until rehydration is done so AuthGuard never flashes
+      // After rehydration, always mark loading=false so AuthGuard never hangs.
+      // App.jsx getSession() runs in parallel and will set the real user object
+      // (with full token data) — the slim persisted user is just for instant render.
       onRehydrateStorage: () => (state) => {
-        // After rehydration, loading stays true — App.jsx getSession() will set it false.
-        // But if rehydration itself fails (no stored data), set loading=false immediately
-        // so the app doesn't hang on a blank PageLoader.
-        if (!state?.user) {
-          useAuthStore.setState({ loading: false })
-        }
+        // Always unblock loading after rehydration finishes.
+        // If state?.user exists, AuthGuard renders children immediately while
+        // getSession() silently refreshes the full token in the background.
+        // If no user, we also unblock so the login page shows right away.
+        useAuthStore.setState({ loading: false })
       },
     }
   )
