@@ -193,6 +193,12 @@ export default function CallScreen({
   const [blurBg, setBlurBg]                   = useState(false)
   const [speaking, setSpeaking]               = useState(false)
   const [hdMode, setHdMode]                   = useState(false)
+  // Camera feeds are near-square/portrait, so cropping to fill the frame
+  // (object-cover) looks natural on a phone. A screen share is landscape —
+  // cropping it cuts off the edges of whatever was shared. We detect this
+  // from the actual incoming video dimensions rather than guessing, since
+  // the remote side could be sharing camera or screen at any point.
+  const [remoteWide, setRemoteWide]           = useState(false)
 
   // Screen sharing (getDisplayMedia) isn't available on most mobile browsers
   // (iOS Safari, mobile Chrome) — hide the control there instead of showing
@@ -459,10 +465,21 @@ export default function CallScreen({
           )}>
             {/* Remote video fills the frame */}
             <video ref={remoteVideoRef} autoPlay playsInline
+              onLoadedMetadata={e => {
+                const v = e.currentTarget
+                if (v.videoWidth && v.videoHeight) setRemoteWide(v.videoWidth / v.videoHeight > 1.3)
+              }}
+              onResize={e => {
+                // Fires when the incoming track's dimensions change mid-call
+                // (e.g. the other person starts/stops screen sharing).
+                const v = e.currentTarget
+                if (v.videoWidth && v.videoHeight) setRemoteWide(v.videoWidth / v.videoHeight > 1.3)
+              }}
               className={clsx(
                 'absolute inset-0 w-full h-full z-0 transition-all duration-700',
-                // object-contain on desktop so nothing is cropped, cover on mobile
-                'object-cover md:object-contain',
+                // object-contain whenever the source is wide (screen share) so
+                // nothing gets cropped off; cover for normal camera video.
+                remoteWide ? 'object-contain' : 'object-cover md:object-contain',
                 hasRemoteVideo && isActive ? 'opacity-100' : 'opacity-0',
                 blurBg && 'blur-md scale-110'
               )}
