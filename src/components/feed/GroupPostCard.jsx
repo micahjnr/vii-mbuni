@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, memo } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { Users, Globe, Lock, MessageCircle, Share2, Bookmark, ChevronDown, Video as VideoIcon, Play } from 'lucide-react'
@@ -21,7 +21,7 @@ import clsx from 'clsx'
  *   post        – post row with .profiles, .group (group row), .likes, .comments
  *   isMember    – boolean, whether the current user is already in the group
  */
-export default function GroupPostCard({ post, isMember: initialMember }) {
+function GroupPostCard({ post, isMember: initialMember }) {
   const { user } = useAuthStore()
   const qc = useQueryClient()
   const navigate = useNavigate()
@@ -390,3 +390,7 @@ export default function GroupPostCard({ post, isMember: initialMember }) {
     </article>
   )
 }
+
+// Same reasoning as PostCard: avoid re-rendering every mounted group post
+// just because something unrelated changed on the feed page.
+export default memo(GroupPostCard)
