@@ -2,6 +2,12 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import sb from '@/lib/supabase'
 import toast from 'react-hot-toast'
 
+// Last-resort fallback ONLY (used if /.netlify/functions/get-ice-servers is unreachable).
+// IMPORTANT: never hardcode private/personal TURN credentials here — this file ships
+// to every client bundle and is trivially readable. openrelayproject's creds below are
+// intentionally public/shared (that's how that free service works). Your real, private
+// relay.metered.ca / Metered.ca credentials belong ONLY in Netlify env vars
+// (TURN_USERNAME, TURN_CREDENTIAL, METERED_API_KEY) — see get-ice-servers.js.
 const FALLBACK_ICE = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
@@ -11,10 +17,6 @@ const FALLBACK_ICE = [
   { urls: 'turn:openrelay.metered.ca:443',               username: 'openrelayproject', credential: 'openrelayproject' },
   { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
   { urls: 'turns:openrelay.metered.ca:443',              username: 'openrelayproject', credential: 'openrelayproject' },
-  { urls: 'turn:numb.viagenie.ca',                       username: 'webrtc@live.com',  credential: 'muazkh' },
-  { urls: 'turn:relay.metered.ca:80',                    username: 'e8dd65f0e3ba775cd4dd5c32', credential: 'uKcGEW+NiXL9AQOL' },
-  { urls: 'turn:relay.metered.ca:443',                   username: 'e8dd65f0e3ba775cd4dd5c32', credential: 'uKcGEW+NiXL9AQOL' },
-  { urls: 'turns:relay.metered.ca:443?transport=tcp',    username: 'e8dd65f0e3ba775cd4dd5c32', credential: 'uKcGEW+NiXL9AQOL' },
 ]
 
 async function fetchIceServers() {
