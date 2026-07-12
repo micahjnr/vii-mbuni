@@ -122,6 +122,15 @@
   /* Post card hover */
   .post-card {
     @apply card p-4 transition-all duration-200 hover:shadow-card-lg;
+    /* Feed is an infinite-scroll list that never unmounts old posts, so the
+       DOM keeps growing the longer someone scrolls. content-visibility tells
+       the browser to skip layout/style/paint work entirely for cards that
+       are off-screen, which is what keeps scrolling smooth even after
+       hundreds of posts have loaded. contain-intrinsic-size gives it a
+       reasonable placeholder height (it remembers the real height after
+       first render) so the scrollbar doesn't jump around. */
+    content-visibility: auto;
+    contain-intrinsic-size: auto 420px;
   }
 
   /* Nav item */
