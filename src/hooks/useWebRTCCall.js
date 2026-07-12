@@ -27,6 +27,13 @@ const FALLBACK_ICE = [
 const TARGET_VIDEO_BITRATE = 2_500_000  // 2.5 Mbps — clear HD, used when network is good
 const MIN_VIDEO_BITRATE    = 150_000    // 150 kbps — floor, still usable on very poor networks
 const STATS_POLL_MS        = 2500       // how often we sample pc.getStats()
+// Screen content (text, UI, code) needs more bits per pixel than camera video
+// to stay legible at the same resolution — camera video hides compression
+// artifacts in noise/motion, but blocky text is immediately obvious. We keep
+// the capture resolution capped (see startScreenShare) to stay within what
+// was already negotiated for the call, and compensate for that lower
+// resolution with a higher bitrate ceiling instead.
+const SCREEN_SHARE_BITRATE = 4_000_000  // 4 Mbps — used only while screen sharing
 
 async function fetchIceServers() {
   try {
@@ -71,6 +78,7 @@ export function useWebRTCCall({ user, onIncomingCall }) {
   const statsTimerRef        = useRef(null)
   const statsPrevRef         = useRef(null)   // previous cumulative counters, for computing deltas
   const currentBitrateRef    = useRef(TARGET_VIDEO_BITRATE)
+  const preShareBitrateRef   = useRef(TARGET_VIDEO_BITRATE)  // bitrate to restore after screen share ends
   const goodStreakRef        = useRef(0)
   const startStatsMonitorRef = useRef(null)   // forwards to startStatsMonitor once defined (avoids TDZ)
 
@@ -759,6 +767,11 @@ export function useWebRTCCall({ user, onIncomingCall }) {
         const sender = pc.getSenders().find(s => s.track?.kind === 'video')
         if (sender) {
           await sender.replaceTrack(track)
+          // Screen text needs more bits per pixel than camera video to stay
+          // legible — remember the camera bitrate so we can restore it later,
+          // then raise the ceiling for the duration of the share.
+          preShareBitrateRef.current = currentBitrateRef.current
+          currentBitrateRef.current = SCREEN_SHARE_BITRATE
           // Re-apply bitrate/framerate/priority — some browsers reset or
           // ignore prior encoding params when the underlying track changes.
           await applyVideoEncoding(pc)
@@ -784,7 +797,11 @@ export function useWebRTCCall({ user, onIncomingCall }) {
       const pc = pcRef.current
       if (pc) {
         const s = pc.getSenders().find(s => s.track?.kind === 'video')
-        if (s) { await s.replaceTrack(camTrack); await applyVideoEncoding(pc) }
+        if (s) {
+          await s.replaceTrack(camTrack)
+          currentBitrateRef.current = preShareBitrateRef.current
+          await applyVideoEncoding(pc)
+        }
       }
       const stream = localStreamRef.current
       if (stream) {
