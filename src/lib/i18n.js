@@ -12,11 +12,13 @@ import { initReactI18next } from 'react-i18next'
 import en from '@/locales/en/common.json'
 import ha from '@/locales/ha/common.json'
 import fr from '@/locales/fr/common.json'
+import zaar from '@/locales/zaar/common.json'
 
 export const SUPPORTED_LANGUAGES = [
   { code: 'en', label: 'English' },
   { code: 'ha', label: 'Hausa' },
   { code: 'fr', label: 'Français' },
+  { code: 'zaar', label: 'Zaar' },
 ]
 
 const STORAGE_KEY = 'vii-language'
@@ -36,6 +38,7 @@ i18n.use(initReactI18next).init({
     en: { common: en },
     ha: { common: ha },
     fr: { common: fr },
+    zaar: { common: zaar },
   },
   lng: detectInitialLanguage(),
   fallbackLng: 'en',
