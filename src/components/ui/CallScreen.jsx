@@ -426,7 +426,7 @@ export default function CallScreen({
 
   return (
     <div className="fixed inset-0 z-[100] flex bg-gray-950 text-white overflow-hidden select-none no-select"
-      style={{ flexDirection: 'column', height: '100dvh', height: '100vh' }}>
+      style={{ flexDirection: 'column', height: '100dvh' }}>
 
       {/* ── BACKGROUND ─────────────────────────────────────────────── */}
       <div className={clsx(
