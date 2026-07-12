@@ -1,6 +1,7 @@
 import { lazy, Suspense, useState, useEffect, useRef } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import sb from '@/lib/supabase'
+import { FEATURE_FLAGS } from '@/lib/featureFlags'
 import { useAuthStore, useUIStore, useNotifStore } from '@/store'
 import Layout from '@/components/layout/Layout'
 import PermissionOnboarding from '@/components/ui/PermissionOnboarding'
@@ -351,7 +352,7 @@ export default function App() {
           <Route path="settings"   element={<Suspense fallback={<TabFallback />}><Settings /></Suspense>} />
           <Route path="call-diag"  element={<Suspense fallback={<TabFallback />}><CallDiag /></Suspense>} />
           <Route path="zaar-tutor" element={<ZaarTutor />} />
-          <Route path="betting"    element={<Suspense fallback={<TabFallback />}><Betting /></Suspense>} />
+          <Route path="betting"    element={FEATURE_FLAGS.betting ? <Suspense fallback={<TabFallback />}><Betting /></Suspense> : <Navigate to="/" replace />} />
         </Route>
 
         <Route path="*" element={<NotFound />} />
