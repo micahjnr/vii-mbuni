@@ -8,6 +8,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -21,8 +23,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Vite bakes VITE_* vars into the JS bundle at build time,
-      # so the .env file must exist before `npm run build` runs.
       - name: Write .env from secrets
         run: |
           cat > .env << EOF
@@ -46,17 +46,15 @@ jobs:
       - name: Sync Capacitor (copy dist/ into android assets)
         run: npx cap sync android
 
-      # Decode the release keystore from a base64 secret.
-      # See README section below for how to create these secrets.
       - name: Decode keystore
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        if: ${{ env.HAS_KEYSTORE == 'true' }}
         run: |
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/app/release.keystore
 
       - name: Build release APK
         working-directory: android
         env:
-          ANDROID_KEYSTORE_PATH: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && 'release.keystore' || '' }}
+          ANDROID_KEYSTORE_PATH: ${{ env.HAS_KEYSTORE == 'true' && 'release.keystore' || '' }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
