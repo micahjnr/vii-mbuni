@@ -194,6 +194,11 @@ export default function CallScreen({
   const [speaking, setSpeaking]               = useState(false)
   const [hdMode, setHdMode]                   = useState(false)
 
+  // Screen sharing (getDisplayMedia) isn't available on most mobile browsers
+  // (iOS Safari, mobile Chrome) — hide the control there instead of showing
+  // a button that will just fail with a toast when tapped.
+  const screenShareSupported = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getDisplayMedia
+
   const controlsTimer = useRef(null)
   const dragStart     = useRef(null)
   const speakingRaf   = useRef(null)
@@ -645,7 +650,7 @@ export default function CallScreen({
                 <SmallBtn icon={blurBg ? EyeOff : Eye} label={blurBg ? 'Unblur' : 'Blur bg'}
                   onClick={() => { setBlurBg(v => !v); setShowReactions(false); setShowNotes(false) }} active={blurBg} />
               )}
-              {isVideo && onToggleScreenShare && (
+              {isVideo && onToggleScreenShare && screenShareSupported && (
                 <SmallBtn icon={screenSharing ? MonitorOff : Monitor} label={screenSharing ? 'Stop' : 'Share'}
                   onClick={onToggleScreenShare} active={screenSharing} />
               )}
