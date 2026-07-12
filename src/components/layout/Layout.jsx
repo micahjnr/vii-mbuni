@@ -1,5 +1,6 @@
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useState, useEffect, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   Home, Compass, Play, Users, MessageCircle, Globe,
   Calendar, BarChart2, User, Bell, BellOff, Moon, Sun, LogOut,
@@ -7,6 +8,7 @@ import {
   Download, TrendingUp
 } from 'lucide-react'
 import { useAuthStore, useUIStore, useNotifStore } from '@/store'
+import { FEATURE_FLAGS } from '@/lib/featureFlags'
 import sb from '@/lib/supabase'
 import Avatar from '@/components/ui/Avatar'
 import ViiMbuniLogo from '@/components/ui/ViiMbuniLogo'
@@ -20,32 +22,35 @@ import CallScreen from '@/components/ui/CallScreen'
 import clsx from 'clsx'
 
 const NAV = [
-  { to: '/',           icon: Home,          label: 'Home'         },
-  { to: '/explore',    icon: Compass,       label: 'Explore'      },
-  { to: '/reels',      icon: Play,          label: 'Reels'        },
-  { to: '/friends',    icon: Users,         label: 'Friends'      },
-  { to: '/messages',   icon: MessageCircle, label: 'Messages',    badge: 'msg' },
-  { to: '/challenges', icon: Trophy,        label: 'Challenges'   },
-  { to: '/betting',    icon: TrendingUp,    label: 'Daily Acca'   },
-  { to: '/groups',     icon: Globe,         label: 'Groups'       },
-  { to: '/events',     icon: Calendar,      label: 'Events'       },
-  { to: '/bookmarks',  icon: Bookmark,      label: 'Bookmarks'    },
-  { to: '/analytics',  icon: BarChart2,     label: 'Analytics'    },
-  { to: '/ai',         icon: Sparkles,      label: 'Vii-Mbuni AI', ai: true },
-  { to: '/zaar-culture', icon: Globe,       label: 'Zaar Culture' },
-  { to: '/profile',    icon: User,          label: 'Profile'      },
-  { to: '/settings',   icon: null,          label: 'Settings', settings: true },
+  { to: '/',           icon: Home,          label: 'Home',         labelKey: 'nav.home'       },
+  { to: '/explore',    icon: Compass,       label: 'Explore',      labelKey: 'nav.explore'    },
+  { to: '/reels',      icon: Play,          label: 'Reels',        labelKey: 'nav.reels'      },
+  { to: '/friends',    icon: Users,         label: 'Friends',      labelKey: 'nav.friends'    },
+  { to: '/messages',   icon: MessageCircle, label: 'Messages',     labelKey: 'nav.messages',  badge: 'msg' },
+  { to: '/challenges', icon: Trophy,        label: 'Challenges',   labelKey: 'nav.challenges' },
+  ...(FEATURE_FLAGS.betting
+    ? [{ to: '/betting', icon: TrendingUp,  label: 'Daily Acca',   labelKey: 'nav.betting'    }]
+    : []),
+  { to: '/groups',     icon: Globe,         label: 'Groups',       labelKey: 'nav.groups'     },
+  { to: '/events',     icon: Calendar,      label: 'Events',       labelKey: 'nav.events'     },
+  { to: '/bookmarks',  icon: Bookmark,      label: 'Bookmarks',    labelKey: 'nav.bookmarks'  },
+  { to: '/analytics',  icon: BarChart2,     label: 'Analytics',    labelKey: 'nav.analytics'  },
+  { to: '/ai',         icon: Sparkles,      label: 'Vii-Mbuni AI', labelKey: 'nav.ai', ai: true },
+  { to: '/zaar-culture', icon: Globe,       label: 'Zaar Culture', labelKey: 'nav.zaarCulture' },
+  { to: '/profile',    icon: User,          label: 'Profile',      labelKey: 'nav.profile'    },
+  { to: '/settings',   icon: null,          label: 'Settings',     labelKey: 'nav.settings', settings: true },
 ]
 
 const BOTTOM_NAV = [
-  { to: '/',         icon: Home,          label: 'Home',        end: true  },
-  { to: '/friends',  icon: Users,         label: 'Friends'               },
-  { to: '/messages', icon: MessageCircle, label: 'Messages',    badge: 'msg' },
+  { to: '/',         icon: Home,          label: 'Home',        labelKey: 'nav.home',     end: true  },
+  { to: '/friends',  icon: Users,         label: 'Friends',     labelKey: 'nav.friends'             },
+  { to: '/messages', icon: MessageCircle, label: 'Messages',    labelKey: 'nav.messages', badge: 'msg' },
   { to: '/zaar-culture', icon: null,      label: 'Zaar',        zaar: true },
-  { to: '/profile',  icon: User,          label: 'Profile'               },
+  { to: '/profile',  icon: User,          label: 'Profile',     labelKey: 'nav.profile'             },
 ]
 
 export default function Layout() {
+  const { t } = useTranslation()
   const { profile, user, signOut } = useAuthStore()
   const { theme, toggleTheme } = useUIStore()
   const { count, msgCount, clearMsgCount } = useNotifStore()
@@ -226,7 +231,7 @@ export default function Layout() {
     if (search.trim()) navigate(`/explore?q=${encodeURIComponent(search.trim())}`)
   }
 
-  const renderNavLink = ({ to, icon: Icon, label, badge, ai, end, settings: isSettings }) => (
+  const renderNavLink = ({ to, icon: Icon, label, labelKey, badge, ai, end, settings: isSettings }) => (
     <NavLink
       key={to} to={to} end={end ?? to === '/'}
       onClick={() => setDrawerOpen(false)}
@@ -247,7 +252,7 @@ export default function Layout() {
           </span>
         )}
       </div>
-      <span className={clsx('flex-1', ai && 'font-bold')}>{label}</span>
+      <span className={clsx('flex-1', ai && 'font-bold')}>{labelKey ? t(labelKey) : label}</span>
       {ai && <span className="text-[9px] font-bold bg-purple-100 dark:bg-purple-500/20 text-purple-600 dark:text-purple-400 px-1.5 py-0.5 rounded-full">NEW</span>}
     </NavLink>
   )
@@ -478,7 +483,7 @@ export default function Layout() {
           'lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-white dark:bg-surface-900 border-t border-surface-200 dark:border-white/10 flex items-center justify-around px-1 shadow-lg dark:shadow-black/40 transition-transform duration-200',
           keyboardOpen && 'translate-y-full'
         )} style={{ paddingBottom: 'max(0.25rem, env(safe-area-inset-bottom))' }}>
-          {BOTTOM_NAV.map(({ to, icon: Icon, label, badge, end, zaar }) => (
+          {BOTTOM_NAV.map(({ to, icon: Icon, label, labelKey, badge, end, zaar }) => (
             <NavLink key={to} to={to} end={end}
               className={({ isActive }) => clsx(
                 'flex flex-col items-center justify-center gap-0.5 flex-1 py-2 px-1 transition-colors relative',
@@ -496,7 +501,7 @@ export default function Layout() {
                       </span>
                     )}
                   </div>
-                  <span className={clsx('text-[10px] font-semibold', isActive && 'font-bold')}>{label}</span>
+                  <span className={clsx('text-[10px] font-semibold', isActive && 'font-bold')}>{labelKey ? t(labelKey) : label}</span>
                   {isActive && <span className={clsx('absolute bottom-0 left-1/2 -translate-x-1/2 w-6 h-0.5 rounded-full', zaar ? 'bg-red-500' : 'bg-brand-500')} />}
                 </>
               )}
