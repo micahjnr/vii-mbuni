@@ -252,6 +252,9 @@ export default function Home() {
   const [composeOpen, setComposeOpen] = useState(false)
   const [feedMode, setFeedMode] = useState('smart') // 'smart' | 'recent' | 'random'
 
+  // Stable reference so PostCard's React.memo isn't invalidated every render
+  const handleQuote = useCallback((p) => setQuotePost(p), [])
+
   const {
     data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading, isError,
   } = useInfiniteQuery({
@@ -393,7 +396,7 @@ export default function Home() {
                       {post._type === 'group_post' ? (
                         <GroupPostCard post={post} isMember={memberGroupIds.has(post.group_id)} />
                       ) : (
-                        <PostCard post={post} onQuote={(p) => setQuotePost(p)} />
+                        <PostCard post={post} onQuote={handleQuote} />
                       )}
                     </div>
                   </div>
