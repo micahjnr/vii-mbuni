@@ -33,7 +33,7 @@ const STATS_POLL_MS        = 2500       // how often we sample pc.getStats()
 // the capture resolution capped (see startScreenShare) to stay within what
 // was already negotiated for the call, and compensate for that lower
 // resolution with a higher bitrate ceiling instead.
-const SCREEN_SHARE_BITRATE = 4_000_000  // 4 Mbps — used only while screen sharing
+const SCREEN_SHARE_BITRATE = 6_000_000  // 6 Mbps — used only while screen sharing (1080p text needs headroom)
 
 async function fetchIceServers() {
   try {
@@ -739,17 +739,18 @@ export function useWebRTCCall({ user, onIncomingCall }) {
       // moves to visibly lag before the other side sees them. Ask for a real
       // frame rate explicitly, same as the camera path.
       //
-      // IMPORTANT: keep resolution at/below what was already negotiated for
-      // the camera track (1280x720). The SDP/codec (H.264 profile-level-id,
-      // etc.) was negotiated around that resolution when the call started —
-      // requesting a much larger frame (e.g. 1920x1080) via replaceTrack
-      // without a full renegotiation can silently fail to encode, which is
-      // why the remote side saw nothing after starting the share.
+      // Resolution: previously capped at 1280x720 out of caution, assuming a
+      // higher resolution silently failed to encode past what was negotiated
+      // for the camera track. In hindsight the actual cause of "nothing
+      // showing" was almost certainly the object-cover cropping bug (fixed
+      // separately in CallScreen.jsx) rendering an all-black corner of the
+      // screen, not an encoding failure — so we go back to requesting full
+      // resolution here for sharper text/detail.
       const screen = await navigator.mediaDevices.getDisplayMedia({
         video: {
           frameRate: { ideal: 30, max: 30 },
-          width:     { ideal: 1280, max: 1280 },
-          height:    { ideal: 720,  max: 720 },
+          width:     { ideal: 1920, max: 1920 },
+          height:    { ideal: 1080, max: 1080 },
           cursor:    'always',
         },
       })
@@ -768,8 +769,8 @@ export function useWebRTCCall({ user, onIncomingCall }) {
         if (sender) {
           await sender.replaceTrack(track)
           // Screen text needs more bits per pixel than camera video to stay
-          // legible — remember the camera bitrate so we can restore it later,
-          // then raise the ceiling for the duration of the share.
+          // legible at a higher resolution — remember the camera bitrate so
+          // we can restore it later, then raise the ceiling for the share.
           preShareBitrateRef.current = currentBitrateRef.current
           currentBitrateRef.current = SCREEN_SHARE_BITRATE
           // Re-apply bitrate/framerate/priority — some browsers reset or
