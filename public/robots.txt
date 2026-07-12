@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://vii-mbuni.netlify.app/sitemap.xml
