@@ -34,6 +34,11 @@ const STATS_POLL_MS        = 2500       // how often we sample pc.getStats()
 // was already negotiated for the call, and compensate for that lower
 // resolution with a higher bitrate ceiling instead.
 const SCREEN_SHARE_BITRATE = 6_000_000  // 6 Mbps — used only while screen sharing (1080p text needs headroom)
+// The adaptive-bitrate stepper below needs its own floor while screen
+// sharing too — MIN_VIDEO_BITRATE (150kbps) is tuned for camera video, which
+// still looks acceptable heavily compressed. Text crushed to 150kbps is
+// completely unreadable, so give it a much higher floor.
+const SCREEN_SHARE_MIN_BITRATE = 1_200_000  // 1.2 Mbps — floor while sharing, still legible
 
 async function fetchIceServers() {
   try {
@@ -73,6 +78,7 @@ export function useWebRTCCall({ user, onIncomingCall }) {
   const localStreamRef   = useRef(null)
   const answerAppliedRef = useRef(false)
   const screenTrackRef   = useRef(null)
+  const screenSharingRef = useRef(false)  // mirrors screenSharing state for use in ref-only code (stepVideoBitrate)
   const onIncomingRef    = useRef(onIncomingCall)
   // Connection-quality monitoring / adaptive bitrate
   const statsTimerRef        = useRef(null)
@@ -85,6 +91,7 @@ export function useWebRTCCall({ user, onIncomingCall }) {
   useEffect(() => { callStateRef.current = callState }, [callState])
   useEffect(() => { localStreamRef.current = localStream }, [localStream])
   useEffect(() => { onIncomingRef.current = onIncomingCall }, [onIncomingCall])
+  useEffect(() => { screenSharingRef.current = screenSharing }, [screenSharing])
 
   const stopLocalStream = useCallback(() => {
     localStreamRef.current?.getTracks().forEach(t => t.stop())
@@ -179,12 +186,22 @@ export function useWebRTCCall({ user, onIncomingCall }) {
   // ── Adaptive bitrate step ───────────────────────────────────────────────
   // Nudges the video sender's bitrate up or down instead of jumping straight
   // to a bound — keeps quality changes smooth rather than a visible jolt.
+  //
+  // IMPORTANT: bounds must be aware of screen sharing. Previously this always
+  // used the camera TARGET/MIN (2.5 Mbps / 150 kbps) regardless of what was
+  // actually being sent — so on any network dip during a screen share, this
+  // would step bitrate down toward 150kbps (unreadable text), and even once
+  // conditions improved it could only step back up to 2.5 Mbps max, never
+  // recovering to the 6 Mbps screen-share target. That's why the manual
+  // bitrate bump in startScreenShare kept getting silently overridden.
   const stepVideoBitrate = useCallback(async (pc, direction) => {
     const sender = pc?.getSenders().find(s => s.track?.kind === 'video')
     if (!sender) return
+    const target = screenSharingRef.current ? SCREEN_SHARE_BITRATE     : TARGET_VIDEO_BITRATE
+    const floor  = screenSharingRef.current ? SCREEN_SHARE_MIN_BITRATE : MIN_VIDEO_BITRATE
     const next = direction === 'down'
-      ? Math.max(MIN_VIDEO_BITRATE, Math.round(currentBitrateRef.current * 0.7))
-      : Math.min(TARGET_VIDEO_BITRATE, Math.round(currentBitrateRef.current * 1.25))
+      ? Math.max(floor, Math.round(currentBitrateRef.current * 0.7))
+      : Math.min(target, Math.round(currentBitrateRef.current * 1.25))
     if (next === currentBitrateRef.current) return
     currentBitrateRef.current = next
     try {
