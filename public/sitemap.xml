@@ -16,4 +16,12 @@
     <loc>https://vii-mbuni.netlify.app/register</loc>
     <priority>0.6</priority>
   </url>
+  <url>
+    <loc>https://vii-mbuni.netlify.app/terms</loc>
+    <priority>0.4</priority>
+  </url>
+  <url>
+    <loc>https://vii-mbuni.netlify.app/privacy</loc>
+    <priority>0.4</priority>
+  </url>
 </urlset>
