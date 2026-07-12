@@ -1,0 +1,44 @@
+{
+  "nav": {
+    "home": "Home",
+    "explore": "Explore",
+    "reels": "Reels",
+    "friends": "Friends",
+    "messages": "Messages",
+    "challenges": "Challenges",
+    "betting": "Daily Acca",
+    "groups": "Groups",
+    "events": "Events",
+    "bookmarks": "Bookmarks",
+    "analytics": "Analytics",
+    "ai": "Vii-Mbuni AI",
+    "zaarCulture": "Zaar Culture",
+    "profile": "Profile",
+    "settings": "Settings"
+  },
+  "auth": {
+    "signIn": "Sign in",
+    "signUp": "Sign up",
+    "email": "Email",
+    "phone": "Phone",
+    "password": "Password",
+    "signInWithEmail": "Sign in with Email",
+    "signInWithPhone": "Sign in with Phone",
+    "phoneNumber": "Phone Number",
+    "forgotPassword": "Forgot password?"
+  },
+  "settings": {
+    "title": "Settings",
+    "appearance": "Appearance",
+    "darkMode": "Dark mode",
+    "language": "Language",
+    "languageSublabel": "Choose the app's display language",
+    "notifications": "Notifications",
+    "pushNotifications": "Push notifications"
+  },
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "loading": "Loading…"
+  }
+}

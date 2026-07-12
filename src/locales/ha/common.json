@@ -1,0 +1,45 @@
+{
+  "_note": "Best-effort machine/AI-assisted Hausa translation. Please have a native Hausa speaker (many are already in your community!) review this file before shipping — especially the tech terms in 'nav' and 'settings', which vary by region/dialect.",
+  "nav": {
+    "home": "Gida",
+    "explore": "Bincike",
+    "reels": "Bidiyo",
+    "friends": "Abokai",
+    "messages": "Saƙonni",
+    "challenges": "Kalubale",
+    "betting": "Hasashen Yau",
+    "groups": "Ƙungiyoyi",
+    "events": "Abubuwan Faruwa",
+    "bookmarks": "Ajiyayyu",
+    "analytics": "Bayanan Ƙididdiga",
+    "ai": "Vii-Mbuni AI",
+    "zaarCulture": "Al'adun Zaar",
+    "profile": "Bayani na",
+    "settings": "Saituna"
+  },
+  "auth": {
+    "signIn": "Shiga",
+    "signUp": "Yi Rajista",
+    "email": "Imel",
+    "phone": "Waya",
+    "password": "Kalmar Sirri",
+    "signInWithEmail": "Shiga da Imel",
+    "signInWithPhone": "Shiga da Waya",
+    "phoneNumber": "Lambar Waya",
+    "forgotPassword": "Ka manta da kalmar sirri?"
+  },
+  "settings": {
+    "title": "Saituna",
+    "appearance": "Kamanni",
+    "darkMode": "Yanayin Duhu",
+    "language": "Harshe",
+    "languageSublabel": "Zaɓi harshen da app ɗin zai nuna",
+    "notifications": "Sanarwa",
+    "pushNotifications": "Sanarwa kai-tsaye"
+  },
+  "common": {
+    "save": "Ajiye",
+    "cancel": "Soke",
+    "loading": "Ana lodi…"
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "_note": "Best-effort AI-assisted French translation, useful for diaspora in Francophone West/Central Africa and France. Please have a native French speaker review before shipping.",
+  "nav": {
+    "home": "Accueil",
+    "explore": "Explorer",
+    "reels": "Reels",
+    "friends": "Amis",
+    "messages": "Messages",
+    "challenges": "Défis",
+    "betting": "Pronostics du jour",
+    "groups": "Groupes",
+    "events": "Événements",
+    "bookmarks": "Enregistrés",
+    "analytics": "Statistiques",
+    "ai": "Vii-Mbuni IA",
+    "zaarCulture": "Culture Zaar",
+    "profile": "Profil",
+    "settings": "Paramètres"
+  },
+  "auth": {
+    "signIn": "Se connecter",
+    "signUp": "S'inscrire",
+    "email": "E-mail",
+    "phone": "Téléphone",
+    "password": "Mot de passe",
+    "signInWithEmail": "Se connecter avec e-mail",
+    "signInWithPhone": "Se connecter avec téléphone",
+    "phoneNumber": "Numéro de téléphone",
+    "forgotPassword": "Mot de passe oublié ?"
+  },
+  "settings": {
+    "title": "Paramètres",
+    "appearance": "Apparence",
+    "darkMode": "Mode sombre",
+    "language": "Langue",
+    "languageSublabel": "Choisissez la langue d'affichage de l'application",
+    "notifications": "Notifications",
+    "pushNotifications": "Notifications push"
+  },
+  "common": {
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "loading": "Chargement…"
+  }
+}
