@@ -19,6 +19,15 @@ const FALLBACK_ICE = [
   { urls: 'turns:openrelay.metered.ca:443',              username: 'openrelayproject', credential: 'openrelayproject' },
 ]
 
+// ── Adaptive video bitrate bounds ───────────────────────────────────────────
+// TARGET is what we start at / step back up towards on a good connection.
+// MIN is the floor we'll never drop below — still watchable at low-res.
+// Stepping is gradual (not a hard cliff) so quality changes feel smooth
+// rather than causing a visible jump/freeze.
+const TARGET_VIDEO_BITRATE = 2_500_000  // 2.5 Mbps — clear HD, used when network is good
+const MIN_VIDEO_BITRATE    = 150_000    // 150 kbps — floor, still usable on very poor networks
+const STATS_POLL_MS        = 2500       // how often we sample pc.getStats()
+
 async function fetchIceServers() {
   try {
     const res = await fetch('/.netlify/functions/get-ice-servers')
@@ -44,6 +53,9 @@ export function useWebRTCCall({ user, onIncomingCall }) {
   const [facingMode, setFacingMode]     = useState('user')
   const [callDuration, setCallDuration] = useState(0)
   const [screenSharing, setScreenSharing] = useState(false)
+  // Real network-derived quality ('good' | 'fair' | 'poor'), replacing the old
+  // fake indicator that only ever flipped when a track fully died.
+  const [connectionQuality, setConnectionQuality] = useState(null)
 
   const pcRef            = useRef(null)
   const channelRef       = useRef(null)
@@ -55,6 +67,12 @@ export function useWebRTCCall({ user, onIncomingCall }) {
   const answerAppliedRef = useRef(false)
   const screenTrackRef   = useRef(null)
   const onIncomingRef    = useRef(onIncomingCall)
+  // Connection-quality monitoring / adaptive bitrate
+  const statsTimerRef        = useRef(null)
+  const statsPrevRef         = useRef(null)   // previous cumulative counters, for computing deltas
+  const currentBitrateRef    = useRef(TARGET_VIDEO_BITRATE)
+  const goodStreakRef        = useRef(0)
+  const startStatsMonitorRef = useRef(null)   // forwards to startStatsMonitor once defined (avoids TDZ)
 
   useEffect(() => { callStateRef.current = callState }, [callState])
   useEffect(() => { localStreamRef.current = localStream }, [localStream])
@@ -70,6 +88,8 @@ export function useWebRTCCall({ user, onIncomingCall }) {
     if (pcRef.current) { pcRef.current.close(); pcRef.current = null }
     if (channelRef.current) { sb.removeChannel(channelRef.current); channelRef.current = null }
     clearInterval(durationRef.current)
+    clearInterval(statsTimerRef.current)
+    statsTimerRef.current = null
   }, [])
 
   const getMedia = useCallback(async (type) => {
@@ -140,12 +160,32 @@ export function useWebRTCCall({ user, onIncomingCall }) {
     try {
       const params = sender.getParameters()
       if (!params.encodings || params.encodings.length === 0) params.encodings = [{}]
-      params.encodings[0].maxBitrate      = 2_500_000   // 2.5 Mbps — clear HD
+      params.encodings[0].maxBitrate      = currentBitrateRef.current
       params.encodings[0].maxFramerate    = 30
       params.encodings[0].networkPriority = 'high'
       params.encodings[0].priority        = 'high'
       await sender.setParameters(params)
     } catch (_) { /* browser may not support all fields — fail silently */ }
+  }, [])
+
+  // ── Adaptive bitrate step ───────────────────────────────────────────────
+  // Nudges the video sender's bitrate up or down instead of jumping straight
+  // to a bound — keeps quality changes smooth rather than a visible jolt.
+  const stepVideoBitrate = useCallback(async (pc, direction) => {
+    const sender = pc?.getSenders().find(s => s.track?.kind === 'video')
+    if (!sender) return
+    const next = direction === 'down'
+      ? Math.max(MIN_VIDEO_BITRATE, Math.round(currentBitrateRef.current * 0.7))
+      : Math.min(TARGET_VIDEO_BITRATE, Math.round(currentBitrateRef.current * 1.25))
+    if (next === currentBitrateRef.current) return
+    currentBitrateRef.current = next
+    try {
+      const params = sender.getParameters()
+      if (!params.encodings || params.encodings.length === 0) params.encodings = [{}]
+      params.encodings[0].maxBitrate = next
+      await sender.setParameters(params)
+      console.log('[WebRTC] adaptive bitrate →', Math.round(next / 1000), 'kbps')
+    } catch (_) {}
   }, [])
 
   const createPeer = useCallback(async (stream) => {
@@ -285,6 +325,7 @@ export function useWebRTCCall({ user, onIncomingCall }) {
       setCallState('active')
       setCallDuration(0)
       durationRef.current = setInterval(() => setCallDuration(d => d + 1), 1000)
+      startStatsMonitorRef.current?.(pc)
     }
   }, [applyICE])
 
@@ -314,6 +355,7 @@ export function useWebRTCCall({ user, onIncomingCall }) {
             setCallState('active')
             setCallDuration(0)
             durationRef.current = setInterval(() => setCallDuration(d => d + 1), 1000)
+            startStatsMonitorRef.current?.(pc)
           }
 
           if (row.status === 'ended' || row.status === 'missed') endCallRef.current?.(false)
@@ -359,8 +401,91 @@ export function useWebRTCCall({ user, onIncomingCall }) {
     }
   }, [])
 
+  // ── Connection quality monitoring ───────────────────────────────────────
+  // Samples real WebRTC stats (packet loss, jitter, round-trip time) instead
+  // of guessing. Drives both the on-screen signal bars and, for video calls,
+  // step-wise adaptive bitrate — so a struggling connection degrades to a
+  // lower, stable bitrate instead of freezing/pixelating at a fixed 2.5 Mbps.
+  const sampleStats = useCallback(async (pc) => {
+    if (!pc) return
+    let report
+    try { report = await pc.getStats() } catch { return }
+
+    let packetsLost = 0, packetsReceived = 0, jitter = 0
+    let rtt = null
+    let hasVideoInbound = false
+
+    report.forEach(r => {
+      if (r.type === 'inbound-rtp' && !r.isRemote) {
+        packetsLost      += r.packetsLost || 0
+        packetsReceived  += r.packetsReceived || 0
+        jitter            = Math.max(jitter, r.jitter || 0)
+        if (r.kind === 'video') hasVideoInbound = true
+      }
+      if (r.type === 'candidate-pair' && (r.state === 'succeeded') && (r.nominated ?? true)) {
+        if (typeof r.currentRoundTripTime === 'number') rtt = r.currentRoundTripTime
+      }
+    })
+
+    const prev = statsPrevRef.current
+    statsPrevRef.current = { packetsLost, packetsReceived }
+
+    // Need two samples to compute a delta (loss rate over this interval,
+    // not lifetime — lifetime loss % looks artificially bad on long calls
+    // that had one brief blip early on).
+    if (!prev) return
+
+    const deltaLost     = Math.max(0, packetsLost - prev.packetsLost)
+    const deltaReceived = Math.max(0, packetsReceived - prev.packetsReceived)
+    const deltaTotal     = deltaLost + deltaReceived
+    const lossRate       = deltaTotal > 0 ? deltaLost / deltaTotal : 0
+    const rttMs           = rtt != null ? rtt * 1000 : null
+
+    let quality
+    if (lossRate > 0.08 || (rttMs != null && rttMs > 400)) quality = 'poor'
+    else if (lossRate > 0.03 || jitter > 0.05 || (rttMs != null && rttMs > 200)) quality = 'fair'
+    else quality = 'good'
+
+    setConnectionQuality(quality)
+
+    // Adaptive bitrate — only meaningful for video calls with an active video sender
+    if (hasVideoInbound || pc.getSenders().some(s => s.track?.kind === 'video')) {
+      if (quality === 'poor') {
+        goodStreakRef.current = 0
+        stepVideoBitrate(pc, 'down')
+      } else if (quality === 'good') {
+        goodStreakRef.current++
+        // Require a few consecutive good samples before stepping back up,
+        // so we don't oscillate on a borderline connection.
+        if (goodStreakRef.current >= 3) {
+          goodStreakRef.current = 0
+          stepVideoBitrate(pc, 'up')
+        }
+      } else {
+        goodStreakRef.current = 0 // 'fair' — hold steady
+      }
+    }
+  }, [stepVideoBitrate])
+
+  const startStatsMonitor = useCallback((pc) => {
+    stopStatsMonitor()
+    statsPrevRef.current = null
+    currentBitrateRef.current = TARGET_VIDEO_BITRATE
+    goodStreakRef.current = 0
+    statsTimerRef.current = setInterval(() => sampleStats(pc), STATS_POLL_MS)
+  }, [sampleStats])
+
+  useEffect(() => { startStatsMonitorRef.current = startStatsMonitor }, [startStatsMonitor])
+
+  function stopStatsMonitor() {
+    clearInterval(statsTimerRef.current)
+    statsTimerRef.current = null
+  }
+
   const endCall = useCallback(async (updateDb = true) => {
     // Always reset local state immediately — never leave UI stuck
+    stopStatsMonitor()
+    setConnectionQuality(null)
     screenTrackRef.current?.stop()
     screenTrackRef.current = null
     closePeer()
@@ -489,6 +614,7 @@ export function useWebRTCCall({ user, onIncomingCall }) {
 
       setCallState('active')
       setCallDuration(0)
+      startStatsMonitorRef.current?.(pc)
       durationRef.current = setInterval(() => setCallDuration(d => d + 1), 1000)
     } catch (err) {
       console.error('[acceptCall]', err)
@@ -675,6 +801,7 @@ export function useWebRTCCall({ user, onIncomingCall }) {
     callState, callType, callSession, remoteUser,
     localStream, remoteStream,
     muted, cameraOff, speakerOff, facingMode, durationLabel, screenSharing,
+    connectionQuality,
     startCall, acceptCall, declineCall, endCall,
     toggleMute, toggleCamera, toggleSpeaker, flipCamera, toggleScreenShare,
   }
