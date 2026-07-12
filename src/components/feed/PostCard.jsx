@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef, memo } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   MessageCircle, Share2, MoreHorizontal, Trash2, Bookmark,
@@ -246,7 +246,7 @@ function Comment({ comment, postId, postOwnerId, user, myProfile, depth = 0, onC
   )
 }
 
-export default function PostCard({ post, onQuote, autoOpenComments = false }) {
+function PostCard({ post, onQuote, autoOpenComments = false }) {
   const { user, profile: myProfile } = useAuthStore()
   const qc = useQueryClient()
   const navigate = useNavigate()
@@ -890,3 +890,9 @@ export default function PostCard({ post, onQuote, autoOpenComments = false }) {
     </article>
   )
 }
+
+// Feed is an unbounded infinite-scroll list — memoizing means an unrelated
+// Home re-render (composer opening, feed-mode toggle, etc.) doesn't force
+// every already-rendered PostCard to re-render too. Only re-renders when
+// this specific post's data, its quote handler, or autoOpenComments changes.
+export default memo(PostCard)
