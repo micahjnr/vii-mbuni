@@ -552,6 +552,7 @@ export default function Layout() {
         facingMode={call.facingMode}
         durationLabel={call.durationLabel}
         screenSharing={call.screenSharing}
+        connectionQuality={call.connectionQuality}
         onAccept={() => call.acceptCall(call.callSession, call.remoteUser)}
         onDecline={() => call.declineCall(call.callSession)}
         onEnd={() => call.endCall()}
