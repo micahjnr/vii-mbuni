@@ -257,10 +257,30 @@ export default function PostCard({ post, onQuote, autoOpenComments = false }) {
   const videoRef   = useRef(null)
   const [videoPoster, setVideoPoster] = useState(null)
   const [videoPlaying, setVideoPlaying] = useState(false)
+  const [videoNearView, setVideoNearView] = useState(false)
 
-  // Extract first-frame poster thumbnail from video
+  // Only start doing any video work (poster fetch, etc.) once the card is
+  // near the viewport — not the instant it mounts. Without this, every
+  // video post in the feed (even ones far off-screen) starts downloading
+  // simultaneously just to render a thumbnail, which starves bandwidth
+  // from whatever video the person is actually trying to watch.
   useEffect(() => {
     if (!post.video_url) return
+    const el = videoRef.current
+    if (!el) return
+    const obs = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) {
+        setVideoNearView(true)
+        obs.disconnect() // only need to trigger this once
+      }
+    }, { rootMargin: '600px 0px' }) // start loading a bit before it's on screen
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [post.video_url])
+
+  // Extract first-frame poster thumbnail from video — deferred until near view
+  useEffect(() => {
+    if (!post.video_url || !videoNearView) return
     const vid = document.createElement('video')
     vid.src = post.video_url
     vid.crossOrigin = 'anonymous'
@@ -286,7 +306,7 @@ export default function PostCard({ post, onQuote, autoOpenComments = false }) {
       vid.removeEventListener('seeked', onSeeked)
       vid.src = ''
     }
-  }, [post.video_url])
+  }, [post.video_url, videoNearView])
 
   // Pause video when scrolled out of view
   useEffect(() => {
