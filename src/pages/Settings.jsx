@@ -1,14 +1,16 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { useAuthStore, useUIStore } from '@/store'
 import { usePushNotifications } from '@/hooks/usePushNotifications'
 import { usePermissions } from '@/hooks/usePermissions'
+import { SUPPORTED_LANGUAGES, setLanguage } from '@/lib/i18n'
 import sb from '@/lib/supabase'
 import {
   Bell, BellOff, Moon, Sun, Lock, Trash2, LogOut,
   Shield, Eye, EyeOff, ChevronRight, User, Palette,
-  Smartphone, Info, Mail, Check, X, UserX
+  Smartphone, Info, Mail, Check, X, UserX, Languages
 } from 'lucide-react'
 import Avatar from '@/components/ui/Avatar'
 import toast from 'react-hot-toast'
@@ -107,9 +109,11 @@ function PermissionRow({ name }) {
 }
 
 export default function Settings() {
+  const { i18n } = useTranslation()
   const { user, profile, signOut } = useAuthStore()
   const qc = useQueryClient()
   const [showBlocked, setShowBlocked] = useState(false)
+  const [showLangPicker, setShowLangPicker] = useState(false)
 
   const { data: blockedUsers = [] } = useQuery({
     queryKey: ['blocked-users', user?.id],
@@ -267,6 +271,31 @@ export default function Settings() {
           onClick={null}
           right={<Toggle value={theme === 'dark'} onChange={toggleTheme} />}
         />
+        <Row
+          icon={Languages}
+          label="Language"
+          sublabel={SUPPORTED_LANGUAGES.find(l => l.code === i18n.language)?.label || 'English'}
+          onClick={() => setShowLangPicker(v => !v)}
+          right={<ChevronRight size={16} className={clsx('text-gray-400 transition-transform', showLangPicker && 'rotate-90')} />}
+        />
+        {showLangPicker && (
+          <div className="px-4 py-3 flex flex-wrap gap-2 bg-surface-50 dark:bg-white/5">
+            {SUPPORTED_LANGUAGES.map(({ code, label }) => (
+              <button
+                key={code}
+                onClick={() => { setLanguage(code); setShowLangPicker(false) }}
+                className={clsx(
+                  'px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors',
+                  i18n.language === code
+                    ? 'bg-brand-500 text-white'
+                    : 'bg-white dark:bg-white/10 text-gray-600 dark:text-gray-300 border border-surface-200 dark:border-white/10'
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
       </Section>
 
       {/* Notifications */}
