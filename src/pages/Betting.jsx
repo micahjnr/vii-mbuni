@@ -99,6 +99,15 @@ export default function Betting() {
         <h1 className="text-lg font-extrabold text-gray-900 dark:text-white">Daily Accumulator</h1>
       </div>
 
+      {/* Disclaimer — this is informational tips content, not a betting/wagering
+          service. No money changes hands in-app. Keep this visible: it matters
+          for app-store review and for local advertising/content regulations. */}
+      <div className="text-xs text-gray-500 dark:text-gray-400 bg-surface-50 dark:bg-white/5 rounded-xl p-3 leading-relaxed">
+        ⚠️ For entertainment and informational purposes only. Vii-Mbuni does not accept
+        wagers, process bets, or handle money. If you choose to bet elsewhere based on
+        this content, please gamble responsibly and only where it is legal to do so.
+      </div>
+
       {/* Today's acca */}
       <AccumulatorCard showAdminControls={isAdmin} />
 
