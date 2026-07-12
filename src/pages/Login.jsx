@@ -287,6 +287,8 @@ export default function Login() {
         <p className="text-center text-xs text-gray-500 mt-3">
           <Link to="/terms" className="hover:text-gray-300 underline underline-offset-2">Terms & Conditions</Link>
           {' · '}
+          <Link to="/privacy" className="hover:text-gray-300 underline underline-offset-2">Privacy</Link>
+          {' · '}
           <Link to="/about" className="hover:text-gray-300 underline underline-offset-2">About</Link>
         </p>
       </div>

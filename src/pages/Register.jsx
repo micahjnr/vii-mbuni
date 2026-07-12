@@ -368,6 +368,8 @@ export default function Register() {
         <p className="text-center text-xs text-gray-500 mt-2">
           By registering you agree to our{' '}
           <Link to="/terms" className="text-brand-400 hover:text-brand-300 underline underline-offset-2">Terms & Conditions</Link>
+          {' '}and{' '}
+          <Link to="/privacy" className="text-brand-400 hover:text-brand-300 underline underline-offset-2">Privacy Policy</Link>
         </p>
       </div>
     </div>

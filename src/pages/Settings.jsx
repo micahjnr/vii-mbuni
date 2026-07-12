@@ -376,6 +376,12 @@ export default function Settings() {
           sublabel="Our agreement with you"
           onClick={() => navigate('/terms')}
         />
+        <Row
+          icon={Lock}
+          label="Privacy Policy"
+          sublabel="What we collect and why"
+          onClick={() => navigate('/privacy')}
+        />
         <div className="px-4 py-3 text-center">
           <p className="text-xs text-gray-400">Vii-Mbuni v5.8.0 · Made with ♥ for Sayawa</p>
         </div>

@@ -71,7 +71,7 @@ export default function Terms() {
           },
           {
             num: '7', title: 'Privacy & Data',
-            content: `We collect information necessary to operate the platform including your profile data, posts, messages, and usage patterns. We do not sell your personal data to third parties. Messages between users are stored securely. You can delete your account and all associated data at any time from Settings.`
+            content: `We collect information necessary to operate the platform, and we do not sell your personal data to third parties. For the full breakdown of what we collect and why, see our Privacy Policy. You can delete your account and most associated data at any time from Settings.`
           },
           {
             num: '8', title: 'Zaar Language Content',

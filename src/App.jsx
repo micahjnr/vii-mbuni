@@ -35,6 +35,7 @@ const Settings    = lazy(() => import('@/pages/Settings'))
 const CallDiag      = lazy(() => import('@/pages/CallDiag'))
 const ResetPassword = lazy(() => import('@/pages/ResetPassword'))
 const Terms         = lazy(() => import('@/pages/Terms'))
+const Privacy        = lazy(() => import('@/pages/Privacy'))
 const About         = lazy(() => import('@/pages/About'))
 const Betting       = lazy(() => import('@/pages/Betting'))
 
@@ -327,6 +328,7 @@ export default function App() {
         <Route path="/register"       element={<GuestGuard><Register /></GuestGuard>} />
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/terms"          element={<Terms />} />
+        <Route path="/privacy"        element={<Privacy />} />
         <Route path="/about"          element={<About />} />
 
         <Route path="/" element={<AuthGuard><Layout /></AuthGuard>}>
