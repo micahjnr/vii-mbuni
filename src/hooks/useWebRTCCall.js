@@ -725,20 +725,25 @@ export function useWebRTCCall({ user, onIncomingCall }) {
   const startScreenShare = useCallback(async () => {
     if (!navigator.mediaDevices?.getDisplayMedia) { toast.error('Screen sharing not supported'); return }
     try {
-      // Without explicit frameRate/resolution constraints, browsers often
-      // default screen captures to a low frame rate (as low as ~5fps) since
-      // getDisplayMedia has no "ideal" defaults of its own — that's what
-      // causes clicks/cursor moves to visibly lag before the other side sees
-      // them. Ask for a real frame rate explicitly, same as the camera path.
+      // Without explicit frameRate constraints, browsers often default screen
+      // captures to a low frame rate (as low as ~5fps) since getDisplayMedia
+      // has no "ideal" defaults of its own — that's what causes clicks/cursor
+      // moves to visibly lag before the other side sees them. Ask for a real
+      // frame rate explicitly, same as the camera path.
+      //
+      // IMPORTANT: keep resolution at/below what was already negotiated for
+      // the camera track (1280x720). The SDP/codec (H.264 profile-level-id,
+      // etc.) was negotiated around that resolution when the call started —
+      // requesting a much larger frame (e.g. 1920x1080) via replaceTrack
+      // without a full renegotiation can silently fail to encode, which is
+      // why the remote side saw nothing after starting the share.
       const screen = await navigator.mediaDevices.getDisplayMedia({
         video: {
           frameRate: { ideal: 30, max: 30 },
-          width:     { ideal: 1920 },
-          height:    { ideal: 1080 },
+          width:     { ideal: 1280, max: 1280 },
+          height:    { ideal: 720,  max: 720 },
+          cursor:    'always',
         },
-        // Not all browsers support this, but where they do it keeps the
-        // system cursor visible in the shared feed.
-        cursor: 'always',
       })
       const track = screen.getVideoTracks()[0]
       screenTrackRef.current = track
