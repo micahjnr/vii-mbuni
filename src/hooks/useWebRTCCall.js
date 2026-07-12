@@ -725,14 +725,39 @@ export function useWebRTCCall({ user, onIncomingCall }) {
   const startScreenShare = useCallback(async () => {
     if (!navigator.mediaDevices?.getDisplayMedia) { toast.error('Screen sharing not supported'); return }
     try {
-      const screen = await navigator.mediaDevices.getDisplayMedia({ video: true })
-      const track  = screen.getVideoTracks()[0]
+      // Without explicit frameRate/resolution constraints, browsers often
+      // default screen captures to a low frame rate (as low as ~5fps) since
+      // getDisplayMedia has no "ideal" defaults of its own — that's what
+      // causes clicks/cursor moves to visibly lag before the other side sees
+      // them. Ask for a real frame rate explicitly, same as the camera path.
+      const screen = await navigator.mediaDevices.getDisplayMedia({
+        video: {
+          frameRate: { ideal: 30, max: 30 },
+          width:     { ideal: 1920 },
+          height:    { ideal: 1080 },
+        },
+        // Not all browsers support this, but where they do it keeps the
+        // system cursor visible in the shared feed.
+        cursor: 'always',
+      })
+      const track = screen.getVideoTracks()[0]
       screenTrackRef.current = track
+
+      // Screen content defaults to being encoded for detail/sharpness over
+      // motion smoothness ("detail" content hint). Explicitly hint "motion"
+      // so the encoder prioritizes catching up to fast changes (typing,
+      // scrolling, clicking) instead of holding out for a sharper frame.
+      try { track.contentHint = 'motion' } catch (_) {}
 
       const pc = pcRef.current
       if (pc) {
         const sender = pc.getSenders().find(s => s.track?.kind === 'video')
-        if (sender) await sender.replaceTrack(track)
+        if (sender) {
+          await sender.replaceTrack(track)
+          // Re-apply bitrate/framerate/priority — some browsers reset or
+          // ignore prior encoding params when the underlying track changes.
+          await applyVideoEncoding(pc)
+        }
       }
 
       const stream = localStreamRef.current
@@ -744,7 +769,7 @@ export function useWebRTCCall({ user, onIncomingCall }) {
       setScreenSharing(true)
       track.onended = () => stopScreenShare()
     } catch (err) { if (err.name !== 'NotAllowedError') toast.error('Screen share failed') }
-  }, [])
+  }, [applyVideoEncoding])
 
   const stopScreenShare = useCallback(async () => {
     screenTrackRef.current?.stop(); screenTrackRef.current = null
@@ -752,7 +777,10 @@ export function useWebRTCCall({ user, onIncomingCall }) {
       const cam = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } }, audio: false })
       const camTrack = cam.getVideoTracks()[0]
       const pc = pcRef.current
-      if (pc) { const s = pc.getSenders().find(s => s.track?.kind === 'video'); if (s) await s.replaceTrack(camTrack) }
+      if (pc) {
+        const s = pc.getSenders().find(s => s.track?.kind === 'video')
+        if (s) { await s.replaceTrack(camTrack); await applyVideoEncoding(pc) }
+      }
       const stream = localStreamRef.current
       if (stream) {
         stream.getVideoTracks().forEach(t => t.stop())
@@ -761,7 +789,7 @@ export function useWebRTCCall({ user, onIncomingCall }) {
       }
     } catch (_) {}
     setScreenSharing(false)
-  }, [])
+  }, [applyVideoEncoding])
 
   const toggleScreenShare = useCallback(() => {
     screenSharing ? stopScreenShare() : startScreenShare()
