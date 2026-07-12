@@ -171,7 +171,7 @@ export default function CallScreen({
   callState, callType, remoteUser,
   localStream, remoteStream,
   muted, cameraOff, speakerOff, facingMode, durationLabel,
-  screenSharing,
+  screenSharing, connectionQuality,
   onAccept, onDecline, onEnd,
   onToggleMute, onToggleCamera, onToggleSpeaker, onFlipCamera, onToggleScreenShare,
 }) {
@@ -211,17 +211,9 @@ export default function CallScreen({
     return () => { document.removeEventListener('pointerdown', reset); clearTimeout(controlsTimer.current) }
   }, [isVideo, isActive])
 
-  // Signal quality check
-  useEffect(() => {
-    if (!remoteStream || !isActive) return
-    const check = () => {
-      const track = remoteStream.getTracks()[0]
-      setSignalQuality(!track || track.readyState === 'ended' ? 'poor' : 'good')
-    }
-    check()
-    const id = setInterval(check, 5000)
-    return () => clearInterval(id)
-  }, [remoteStream, isActive])
+  // Signal quality now comes from real WebRTC stats (packet loss, jitter, RTT)
+  // sampled in useWebRTCCall, not a guess based on whether the track is alive.
+  useEffect(() => { setSignalQuality(connectionQuality) }, [connectionQuality])
 
   // Speaking detection
   useEffect(() => {
