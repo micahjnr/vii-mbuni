@@ -2,7 +2,7 @@
 
 // Lock CORS to the deployed site. Falls back to wildcard only in local dev
 // (when SITE_URL is unset). Set SITE_URL in Netlify env vars → Site settings.
-const ALLOWED_ORIGIN = process.env.SITE_URL || '*'
+const ALLOWED_ORIGIN = process.env.SITE_URL || process.env.URL || '*'
 const CORS = {
   'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
   'Access-Control-Allow-Headers': 'Content-Type',

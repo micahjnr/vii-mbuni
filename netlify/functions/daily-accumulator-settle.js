@@ -25,7 +25,7 @@ const API_BASE = 'https://v3.football.api-sports.io'
 const SB_URL   = process.env.SUPABASE_URL
 const SB_KEY   = process.env.SUPABASE_SERVICE_ROLE_KEY
 
-const ALLOWED_ORIGIN = process.env.SITE_URL || '*'
+const ALLOWED_ORIGIN = process.env.SITE_URL || process.env.URL || '*'
 const CORS = {
   'Access-Control-Allow-Origin':  ALLOWED_ORIGIN,
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',

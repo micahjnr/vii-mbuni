@@ -27,7 +27,7 @@ function mimeFromPath(filePath) {
 
 exports.handler = async (event) => {
   const CORS = {
-    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Origin': process.env.SITE_URL || process.env.URL || '*',
     'Access-Control-Allow-Methods': 'GET, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Range',
     'Access-Control-Expose-Headers': 'Content-Length, Content-Range, Accept-Ranges',

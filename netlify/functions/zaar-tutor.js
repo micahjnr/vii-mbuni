@@ -8,7 +8,7 @@ const MAX_TOKENS = 600;
 const MAX_HISTORY = 20; // keep last N messages to avoid token bloat
 
 const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': process.env.SITE_URL || '*',
+  'Access-Control-Allow-Origin': process.env.SITE_URL || process.env.URL || '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
   'Content-Type': 'application/json',

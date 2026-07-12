@@ -1,9 +1,13 @@
 // netlify/functions/daily-accumulator-debug.js
 // GET /.netlify/functions/daily-accumulator-debug
+//
+// ⚠️ This calls the live (metered/paid-tier) Odds API on every request.
+// It is gated behind CRON_SECRET so it can't be hit by randoms to burn
+// your API quota or leak your remaining-requests count.
 
 const CORS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Allow-Origin': process.env.SITE_URL || process.env.URL || '*',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   'Access-Control-Allow-Methods': 'GET, OPTIONS',
 }
 const json = (status, body) => ({
@@ -18,6 +22,12 @@ const ODDS_BASE    = 'https://api.the-odds-api.com/v4'
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 200, headers: CORS, body: '' }
   if (!ODDS_API_KEY) return json(500, { error: 'THE_ODDS_API_KEY not set in Netlify env vars' })
+
+  const secret = process.env.CRON_SECRET
+  if (secret) {
+    const token = (event.headers['authorization'] || event.headers['Authorization'] || '').replace(/^Bearer\s+/i,'').trim()
+    if (token !== secret) return json(401, { error: 'Unauthorized' })
+  }
 
   const sportsRes  = await fetch(`${ODDS_BASE}/sports/?apiKey=${ODDS_API_KEY}`)
   const remaining  = sportsRes.headers.get('x-requests-remaining')

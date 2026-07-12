@@ -3,7 +3,7 @@
 // Called automatically by the Login page when "Email not confirmed" is returned.
 // Uses the service role key — NEVER expose this to the browser.
 
-const ALLOWED_ORIGIN = process.env.SITE_URL || '*'
+const ALLOWED_ORIGIN = process.env.SITE_URL || process.env.URL || '*'
 const CORS = {
   'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
   'Access-Control-Allow-Headers': 'Content-Type',

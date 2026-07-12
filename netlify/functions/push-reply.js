@@ -5,7 +5,7 @@
 
 const { createClient } = require('@supabase/supabase-js')
 
-const ALLOWED_ORIGIN = process.env.SITE_URL || '*'
+const ALLOWED_ORIGIN = process.env.SITE_URL || process.env.URL || '*'
 const CORS = {
   'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',

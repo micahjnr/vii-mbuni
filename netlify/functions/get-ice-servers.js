@@ -10,7 +10,7 @@
 // The relay.metered.ca free-tier credentials MUST be stored in env vars — never hardcoded.
 
 const CORS = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': process.env.SITE_URL || process.env.URL || '*',
   'Access-Control-Allow-Headers': 'Content-Type',
   'Content-Type': 'application/json',
 }
