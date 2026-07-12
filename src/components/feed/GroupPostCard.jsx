@@ -41,9 +41,26 @@ export default function GroupPostCard({ post, isMember: initialMember }) {
   const videoRef = useRef(null)
   const [videoPoster, setVideoPoster] = useState(null)
   const [videoPlaying, setVideoPlaying] = useState(false)
+  const [videoNearView, setVideoNearView] = useState(false)
 
+  // Defer poster generation until the card is near the viewport so we don't
+  // kick off a hidden video download for every group post at once.
   useEffect(() => {
     if (!post.video_url) return
+    const el = videoRef.current
+    if (!el) return
+    const obs = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) {
+        setVideoNearView(true)
+        obs.disconnect()
+      }
+    }, { rootMargin: '600px 0px' })
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [post.video_url])
+
+  useEffect(() => {
+    if (!post.video_url || !videoNearView) return
     const vid = document.createElement('video')
     vid.src = post.video_url
     vid.crossOrigin = 'anonymous'
@@ -65,7 +82,7 @@ export default function GroupPostCard({ post, isMember: initialMember }) {
     vid.addEventListener('seeked', onSeeked)
     vid.load()
     return () => { vid.removeEventListener('loadedmetadata', onMeta); vid.removeEventListener('seeked', onSeeked); vid.src = '' }
-  }, [post.video_url])
+  }, [post.video_url, videoNearView])
 
   useEffect(() => {
     if (!post.video_url) return
