@@ -89,10 +89,11 @@ export default function About() {
               <div className="w-16 h-16 rounded-2xl overflow-hidden flex-shrink-0 border-2 border-surface-200 dark:border-white/20 shadow-lg"
                 style={{ background: 'linear-gradient(135deg, #c8102e, #7c3aed)' }}>
                 <img
-                  src="/dev-photo.jpg" onError={e => { if(e.currentTarget.src.includes("dev-photo.jpg")) { e.currentTarget.src="/dev-photo.svg"; return; } e.currentTarget.src="/dev-photo.svg" }}
+                  src="/dev-photo.jpg"
                   alt="Iliya Micah"
                   className="w-full h-full object-cover"
-                  onError={e => { if(e.currentTarget.src.includes("dev-photo.jpg")) { e.currentTarget.src="/dev-photo.svg"; return; }
+                  onError={e => {
+                    if (e.currentTarget.src.includes('dev-photo.jpg')) { e.currentTarget.src = '/dev-photo.svg'; return }
                     // Fallback to initials if photo not found
                     e.target.style.display = 'none'
                     e.target.parentElement.innerHTML = '<span style="font-size:28px;font-weight:900;color:#fff;display:flex;align-items:center;justify-content:center;width:100%;height:100%">I</span>'
