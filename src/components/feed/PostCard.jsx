@@ -662,8 +662,14 @@ export default function PostCard({ post, onQuote, autoOpenComments = false }) {
       {poll && <PollWidget poll={poll} postId={post.id} />}
 
       {post.image_url && (
-        <div className="rounded-xl overflow-hidden mb-3 bg-surface-100 dark:bg-surface-800 min-h-[120px]">
-          <img src={post.image_url} alt="Post" className="w-full object-cover max-h-96" loading="lazy" decoding="async" />
+        <div className="rounded-xl overflow-hidden mb-3 bg-surface-200 dark:bg-surface-800 min-h-[120px] flex items-center justify-center">
+          <img
+            src={post.image_url}
+            alt="Post"
+            className="w-full max-h-[600px] object-contain"
+            loading="lazy"
+            decoding="async"
+          />
         </div>
       )}
 

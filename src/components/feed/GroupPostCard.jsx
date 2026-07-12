@@ -255,8 +255,8 @@ export default function GroupPostCard({ post, isMember: initialMember }) {
       <RichContent content={post.content} />
 
       {post.image_url && (
-        <div className="rounded-xl overflow-hidden mb-3 bg-surface-100 dark:bg-surface-800">
-          <img src={post.image_url} alt="Post" className="w-full object-cover max-h-80" loading="lazy" />
+        <div className="rounded-xl overflow-hidden mb-3 bg-surface-200 dark:bg-surface-800 flex items-center justify-center">
+          <img src={post.image_url} alt="Post" className="w-full max-h-[600px] object-contain" loading="lazy" />
         </div>
       )}
 
