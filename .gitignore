@@ -21,3 +21,9 @@ npm-debug.log*
 # Editor
 .vscode/
 .idea/
+.env
+ .env.*
+ !.env.example
++
++# Firebase — project-specific, injected by CI from a secret (see build-apk.yml)
++android/app/google-services.json
