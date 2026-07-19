@@ -1,6 +1,6 @@
 {
-  "versionCode": 1,
-  "versionName": "1.0",
+  "versionCode": 27,
+  "versionName": "1.0.27",
   "apkUrl": "https://vii-mbuni.netlify.app/downloads/vii-mbuni-latest.apk",
-  "notes": "Initial release."
+  "notes": "Auto-built from commit edc9d2b46a1417c6150959b27c55700b4006704e"
 }
