@@ -54,6 +54,14 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Write google-services.json from secret
+        run: |
+          if [ -z "${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}" ]; then
+            echo "::warning::GOOGLE_SERVICES_JSON_BASE64 secret not set — building without push notifications."
+          else
+            echo "${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}" | base64 -d > android/app/google-services.json
+          fi
+
       - name: Sync Capacitor (copy dist/ into android assets)
         run: npx cap sync android
 
