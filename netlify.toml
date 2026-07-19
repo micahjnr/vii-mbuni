@@ -107,3 +107,17 @@ for = "/.well-known/assetlinks.json"
 [headers.values]
 Content-Type = "application/json"
 Cache-Control = "public, max-age=3600"
+
+# ─── Self-update manifest — must never be cached, or clients won't see new builds
+[[headers]]
+for = "/update.json"
+[headers.values]
+Content-Type = "application/json"
+Cache-Control = "no-cache, no-store, must-revalidate"
+
+# ─── Self-update APK ────────────────────────────────────────────────────────
+[[headers]]
+for = "/downloads/*.apk"
+[headers.values]
+Content-Type = "application/vnd.android.package-archive"
+Cache-Control = "no-cache"
