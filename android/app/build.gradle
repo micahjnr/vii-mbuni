@@ -10,8 +10,10 @@ android {
         // Overridable by CI (see .github/workflows/build-apk.yml) so every
         // published build has a unique, increasing versionCode. Falls back
         // to 1 / "1.0" for local/manual builds.
-        versionCode (System.getenv("ANDROID_VERSION_CODE") ?: "1").toInteger()
-        versionName System.getenv("ANDROID_VERSION_NAME") ?: "1.0"
+        def vCode = (System.getenv("ANDROID_VERSION_CODE") ?: "1").toInteger()
+        def vName = System.getenv("ANDROID_VERSION_NAME") ?: "1.0"
+        versionCode vCode
+        versionName vName
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
