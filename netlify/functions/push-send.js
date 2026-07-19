@@ -2,6 +2,18 @@
 const { createClient } = require('@supabase/supabase-js')
 const webpush = require('web-push')
 const crypto = require('crypto')
+const { sendFcm } = require('./_fcm')
+
+// FCM (native Android app) is optional — if not configured, we just skip it
+// and keep sending Web Push as before.
+let FIREBASE_SERVICE_ACCOUNT = null
+if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+  try {
+    FIREBASE_SERVICE_ACCOUNT = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON)
+  } catch (e) {
+    console.error('[push-send] FIREBASE_SERVICE_ACCOUNT_JSON is not valid JSON:', e.message)
+  }
+}
 
 // ── FIXED: No wildcard fallback — if SITE_URL is missing, fail loudly at
 //   startup rather than silently allowing all origins at runtime.
@@ -270,7 +282,7 @@ exports.handler = async (event) => {
   const actorName   = actor?.full_name  ?? 'Someone'
   const actorAvatar = actor?.avatar_url ?? null
 
-  // ── Fetch subscriptions ──────────────────────────────────────────────────
+  // ── Fetch web push subscriptions ─────────────────────────────────────────
   const { data: subs, error: subsError } = await sb
     .from('push_subscriptions')
     .select('endpoint, p256dh, auth')
@@ -281,14 +293,30 @@ exports.handler = async (event) => {
     return json(500, { error: subsError.message })
   }
 
-  console.log('[push-send] Subscriptions found:', subs?.length ?? 0)
-  if (!subs?.length) return json(200, { sent: 0, reason: 'no_subscriptions' })
+  // ── Fetch native app (FCM) tokens ────────────────────────────────────────
+  let fcmTokens = []
+  if (FIREBASE_SERVICE_ACCOUNT) {
+    const { data: tokens, error: tokensError } = await sb
+      .from('fcm_tokens')
+      .select('token')
+      .eq('user_id', user_id)
+
+    if (tokensError) {
+      console.error('[push-send] Error fetching fcm_tokens:', tokensError.message)
+    } else {
+      fcmTokens = tokens || []
+    }
+  }
+
+  console.log('[push-send] Subscriptions found:', subs?.length ?? 0, '| FCM tokens found:', fcmTokens.length)
+  if (!subs?.length && !fcmTokens.length) return json(200, { sent: 0, reason: 'no_subscriptions' })
 
   const payload = buildPayload({
     type, actorName, actorAvatar,
     referenceId: reference_id,
     extra: { ...extra, actorId: actor_id },
   })
+  const payloadObj = JSON.parse(payload)
 
   // ── FIXED: sendWithRetry now properly awaits the stale-subscription cleanup
   //   before throwing, so the delete isn't fire-and-forget on the error path.
@@ -333,11 +361,38 @@ exports.handler = async (event) => {
     }
   }
 
-  const results = await Promise.allSettled(subs.map(sub => sendWithRetry(sub)))
-  const sent    = results.filter(r => r.status === 'fulfilled').length
-  const failed  = results.filter(r => r.status === 'rejected').map(r => r.reason?.message)
+  const webResults = await Promise.allSettled((subs || []).map(sub => sendWithRetry(sub)))
+  const webSent    = webResults.filter(r => r.status === 'fulfilled').length
+  const webFailed  = webResults.filter(r => r.status === 'rejected').map(r => r.reason?.message)
 
-  console.log('[push-send] Result:', { sent, total: subs.length, failed })
+  // ── Send to native app (FCM) tokens ──────────────────────────────────────
+  const sendFcmWithCleanup = async (tokenRow) => {
+    const result = await sendFcm(FIREBASE_SERVICE_ACCOUNT, tokenRow.token, {
+      title: payloadObj.title,
+      body: payloadObj.body,
+      icon: payloadObj.icon,
+      data: payloadObj.data,
+    })
+    if (!result.ok) {
+      // Unregistered/invalid token — clean it up
+      if (result.status === 404 || result.result?.error?.status === 'NOT_FOUND') {
+        console.warn('[push-send] Removing dead FCM token:', tokenRow.token.slice(-12))
+        await sb.from('fcm_tokens').delete().eq('token', tokenRow.token)
+      }
+      throw new Error(`FCM ${result.status}: ${JSON.stringify(result.result)}`)
+    }
+    console.log('[push-send] Sent FCM to token ending:', tokenRow.token.slice(-12))
+  }
 
-  return json(200, { sent, total: subs.length, ...(failed.length ? { failed } : {}) })
+  const fcmResults = await Promise.allSettled(fcmTokens.map(sendFcmWithCleanup))
+  const fcmSent    = fcmResults.filter(r => r.status === 'fulfilled').length
+  const fcmFailed  = fcmResults.filter(r => r.status === 'rejected').map(r => r.reason?.message)
+
+  const sent   = webSent + fcmSent
+  const total  = (subs?.length || 0) + fcmTokens.length
+  const failed = [...webFailed, ...fcmFailed]
+
+  console.log('[push-send] Result:', { sent, total, webSent, fcmSent, failed })
+
+  return json(200, { sent, total, webSent, fcmSent, ...(failed.length ? { failed } : {}) })
 }
