@@ -5,6 +5,9 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: write   # needed to publish update.json + the APK back to the repo
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -13,6 +16,14 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
+
+      - name: Compute version
+        id: version
+        run: |
+          VCODE=${{ github.run_number }}
+          VNAME="1.0.$VCODE"
+          echo "code=$VCODE" >> "$GITHUB_OUTPUT"
+          echo "name=$VNAME" >> "$GITHUB_OUTPUT"
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -58,6 +69,8 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_VERSION_CODE: ${{ steps.version.outputs.code }}
+          ANDROID_VERSION_NAME: ${{ steps.version.outputs.name }}
         run: |
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon
@@ -67,3 +80,40 @@ jobs:
         with:
           name: vii-mbuni-release-apk
           path: android/app/build/outputs/apk/release/app-release*.apk
+
+      # ─────────────────────────────────────────────────────────────────────
+      # Self-update: publish the signed APK + a version manifest into public/
+      # so Netlify (which auto-deploys on push to main) serves them at
+      # https://vii-mbuni.netlify.app/update.json and .../downloads/vii-mbuni-latest.apk.
+      # Only signed builds are published — an update APK must be signed with
+      # the same key as the app it's replacing, or Android will refuse to
+      # install it over the existing app.
+      # ─────────────────────────────────────────────────────────────────────
+      - name: Prepare update manifest + APK
+        if: ${{ env.HAS_KEYSTORE == 'true' }}
+        run: |
+          mkdir -p public/downloads
+          APK_PATH=$(ls android/app/build/outputs/apk/release/app-release*.apk | head -n1)
+          cp "$APK_PATH" public/downloads/vii-mbuni-latest.apk
+
+          cat > public/update.json << EOF2
+          {
+            "versionCode": ${{ steps.version.outputs.code }},
+            "versionName": "${{ steps.version.outputs.name }}",
+            "apkUrl": "https://vii-mbuni.netlify.app/downloads/vii-mbuni-latest.apk",
+            "notes": "Auto-built from commit ${{ github.sha }}"
+          }
+          EOF2
+
+      - name: Publish update manifest + APK to the repo
+        if: ${{ env.HAS_KEYSTORE == 'true' }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add public/update.json public/downloads/vii-mbuni-latest.apk
+          if git diff --cached --quiet; then
+            echo "No changes to publish"
+          else
+            git commit -m "chore: publish v${{ steps.version.outputs.name }} APK [skip ci]"
+            git push
+          fi
