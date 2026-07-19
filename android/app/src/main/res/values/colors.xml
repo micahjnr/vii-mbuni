@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Brand red, matches theme_color in public/manifest.json -->
+    <color name="colorPrimary">#C8102E</color>
+    <color name="colorPrimaryDark">#8F0C20</color>
+    <color name="colorAccent">#C8102E</color>
+
+    <!-- Used as the tint for push notifications (small icon + title) -->
+    <color name="notificationColor">#C8102E</color>
+</resources>
