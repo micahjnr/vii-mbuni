@@ -2,18 +2,11 @@
 const { createClient } = require('@supabase/supabase-js')
 const webpush = require('web-push')
 const crypto = require('crypto')
-const { sendFcm } = require('./_fcm')
+const { sendFcm, getServiceAccount } = require('./_fcm')
 
-// FCM (native Android app) is optional — if not configured, we just skip it
-// and keep sending Web Push as before.
-let FIREBASE_SERVICE_ACCOUNT = null
-if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
-  try {
-    FIREBASE_SERVICE_ACCOUNT = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON)
-  } catch (e) {
-    console.error('[push-send] FIREBASE_SERVICE_ACCOUNT_JSON is not valid JSON:', e.message)
-  }
-}
+// FCM (native Android app) is optional — if the service account can't be
+// loaded from Supabase Storage (see _fcm.js), we just skip it and keep
+// sending Web Push as before.
 
 // ── FIXED: No wildcard fallback — if SITE_URL is missing, fail loudly at
 //   startup rather than silently allowing all origins at runtime.
@@ -294,8 +287,9 @@ exports.handler = async (event) => {
   }
 
   // ── Fetch native app (FCM) tokens ────────────────────────────────────────
+  const serviceAccount = await getServiceAccount()
   let fcmTokens = []
-  if (FIREBASE_SERVICE_ACCOUNT) {
+  if (serviceAccount) {
     const { data: tokens, error: tokensError } = await sb
       .from('fcm_tokens')
       .select('token')
@@ -367,7 +361,7 @@ exports.handler = async (event) => {
 
   // ── Send to native app (FCM) tokens ──────────────────────────────────────
   const sendFcmWithCleanup = async (tokenRow) => {
-    const result = await sendFcm(FIREBASE_SERVICE_ACCOUNT, tokenRow.token, {
+    const result = await sendFcm(serviceAccount, tokenRow.token, {
       title: payloadObj.title,
       body: payloadObj.body,
       icon: payloadObj.icon,
