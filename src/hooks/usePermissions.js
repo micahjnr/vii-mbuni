@@ -11,6 +11,16 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import toast from 'react-hot-toast'
+import { Capacitor } from '@capacitor/core'
+import { PushNotifications } from '@capacitor/push-notifications'
+
+// ── FIXED: The web `Notification` API doesn't exist inside the Capacitor
+//   Android WebView, so the old code always reported "unsupported" there,
+//   even though native push (via @capacitor/push-notifications → FCM)
+//   works fine. We now check native permission state through Capacitor
+//   when running in the installed APK, and only fall back to the web
+//   Notification API in a real browser/PWA.
+const IS_NATIVE = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android'
 
 // Permission names mapped to their browser API equivalents
 const PERMISSION_MAP = {
@@ -36,6 +46,16 @@ async function queryPermissionState(name) {
 
   // Notifications uses its own API
   if (name === 'notifications') {
+    if (IS_NATIVE) {
+      try {
+        const { receive } = await PushNotifications.checkPermissions()
+        // 'prompt' | 'prompt-with-rationale' both mean "not asked yet"
+        if (receive === 'prompt' || receive === 'prompt-with-rationale') return 'prompt'
+        return receive // 'granted' | 'denied'
+      } catch {
+        return 'unsupported'
+      }
+    }
     if (!('Notification' in window)) return 'unsupported'
     return Notification.permission // 'granted' | 'denied' | 'default' → normalize to 'prompt'
       === 'default' ? 'prompt' : Notification.permission
@@ -87,6 +107,18 @@ export function usePermissions() {
     try {
       // ── NOTIFICATIONS ──────────────────────────────────────────
       if (name === 'notifications') {
+        if (IS_NATIVE) {
+          let perm = await PushNotifications.checkPermissions()
+          if (perm.receive === 'granted') return 'granted'
+          if (perm.receive === 'prompt' || perm.receive === 'prompt-with-rationale') {
+            perm = await PushNotifications.requestPermissions()
+          }
+          const state = perm.receive === 'granted' ? 'granted' : 'denied'
+          setPermissions(p => ({ ...p, notifications: state }))
+          if (state === 'granted' && !silent) toast.success('Notifications enabled! 🔔')
+          if (state === 'denied' && !silent) showDeniedToast(name)
+          return state
+        }
         if (!('Notification' in window)) {
           if (!silent) toast.error('Notifications not supported on this device')
           return 'unsupported'
