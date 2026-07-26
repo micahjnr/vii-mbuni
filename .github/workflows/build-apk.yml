@@ -65,6 +65,25 @@ jobs:
       - name: Sync Capacitor (copy dist/ into android assets)
         run: npx cap sync android
 
+      # ─────────────────────────────────────────────────────────────────────
+      # Debug build — Android auto-signs this with a built-in debug key,
+      # so it always installs with zero keystore setup. Use this artifact
+      # for testing (like push notifications) right now. It is NOT for
+      # real distribution — switch to the signed release build below once
+      # ANDROID_KEYSTORE_BASE64 and friends are configured.
+      # ─────────────────────────────────────────────────────────────────────
+      - name: Build debug APK (auto-signed, installs immediately)
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Upload debug APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vii-mbuni-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+
       - name: Decode keystore
         if: ${{ env.HAS_KEYSTORE == 'true' }}
         run: |
