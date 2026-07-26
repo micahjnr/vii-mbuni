@@ -3,8 +3,55 @@
 // Deliberately avoids the firebase-admin package (large, slow cold starts on
 // serverless) — just crypto + fetch to sign a short-lived OAuth2 JWT and
 // call the FCM REST API directly.
+//
+// The service account key itself is loaded from a private Supabase Storage
+// bucket at runtime — NOT from an env var. Netlify injects every env var
+// into every function's AWS Lambda config, which has a hard 4KB total
+// limit; this key alone (~2KB RSA private key) plus the project's other
+// ~15 env vars blows past that and breaks every function's deploy, not
+// just this one. See: https://ntl.fyi/functions-migrate
 
 const crypto = require('crypto')
+const { createClient } = require('@supabase/supabase-js')
+
+const SERVICE_ACCOUNT_BUCKET = 'secrets'
+const SERVICE_ACCOUNT_PATH = 'firebase-service-account.json'
+
+// Cached across warm invocations of the same function instance — fetched
+// from Supabase Storage once per cold start, not on every push.
+let cachedServiceAccount = null
+let loadFailed = false // avoid hammering Storage every call if the file is missing/misconfigured
+
+/**
+ * Loads (and caches) the Firebase service account JSON from a private
+ * Supabase Storage bucket. Returns null if unavailable — callers should
+ * treat FCM as "not configured" rather than throwing, so Web Push keeps
+ * working even if this is broken.
+ */
+async function getServiceAccount() {
+  if (cachedServiceAccount) return cachedServiceAccount
+  if (loadFailed) return null
+
+  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    console.error('[_fcm] SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY not set — cannot load Firebase credentials')
+    loadFailed = true
+    return null
+  }
+
+  try {
+    const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
+    const { data, error } = await sb.storage.from(SERVICE_ACCOUNT_BUCKET).download(SERVICE_ACCOUNT_PATH)
+    if (error) throw error
+
+    const text = await data.text()
+    cachedServiceAccount = JSON.parse(text)
+    return cachedServiceAccount
+  } catch (e) {
+    console.error('[_fcm] Failed to load Firebase service account from Supabase Storage:', e.message)
+    loadFailed = true
+    return null
+  }
+}
 
 function base64url(input) {
   return Buffer.from(input)
@@ -82,7 +129,20 @@ async function sendFcm(serviceAccount, token, { title, body, data, icon }) {
               .filter(([, v]) => v !== undefined && v !== null)
               .map(([k, v]) => [k, String(v)])
           ),
-          android: { priority: 'high' },
+          android: {
+            priority: 'high',
+            notification: {
+              // Matches the channel created in MainActivity.java —
+              // must already exist on-device or the OS silently drops
+              // these fields (falls back to its own default channel).
+              channel_id:  'general',
+              color:       '#C8102E',
+              default_sound:    true,
+              default_vibrate_timings: true,
+              notification_priority: 'PRIORITY_HIGH',
+              visibility:  'PUBLIC',
+            },
+          },
         },
       }),
     }
@@ -92,4 +152,4 @@ async function sendFcm(serviceAccount, token, { title, body, data, icon }) {
   return { ok: res.ok, status: res.status, result }
 }
 
-module.exports = { sendFcm }
+module.exports = { sendFcm, getServiceAccount }
