@@ -2,7 +2,7 @@
 const { createClient } = require('@supabase/supabase-js')
 const webpush = require('web-push')
 const crypto = require('crypto')
-const { sendFcm, getServiceAccount } = require('./_fcm')
+const { sendFcm, getServiceAccount } = require('./lib/_fcm')
 
 // FCM (native Android app) is optional — if the service account can't be
 // loaded from Supabase Storage (see _fcm.js), we just skip it and keep
