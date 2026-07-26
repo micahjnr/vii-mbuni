@@ -30,12 +30,26 @@ const json = (statusCode, body) => ({
 const MISSING = ['VAPID_EMAIL','VAPID_PUBLIC_KEY','VAPID_PRIVATE_KEY','SUPABASE_URL','SUPABASE_SERVICE_ROLE_KEY','WEBHOOK_SECRET','SITE_URL']
   .filter(k => !process.env[k])
 
+// ── FIXED: setVapidDetails() throws synchronously if the VAPID keys are
+//   malformed (wrong length/encoding, or public+private not a matching
+//   pair). Since this ran at module load time with no try/catch, that
+//   throw used to crash the entire module before `exports.handler` was
+//   ever assigned — which Netlify then reports as the misleading
+//   "push-send.handler is undefined or not exported" (Runtime.HandlerNotFound)
+//   instead of the actual VAPID error. We now catch it, keep the module
+//   alive, and surface the real error from inside the handler instead.
+let VAPID_ERROR = null
 if (!MISSING.length) {
-  webpush.setVapidDetails(
-    process.env.VAPID_EMAIL,
-    process.env.VAPID_PUBLIC_KEY,
-    process.env.VAPID_PRIVATE_KEY
-  )
+  try {
+    webpush.setVapidDetails(
+      process.env.VAPID_EMAIL,
+      process.env.VAPID_PUBLIC_KEY,
+      process.env.VAPID_PRIVATE_KEY
+    )
+  } catch (err) {
+    VAPID_ERROR = err.message
+    console.error('[push-send] Invalid VAPID keys:', err.message)
+  }
 }
 
 // ── FIXED: Sanitize all user-supplied strings before they enter payloads.
@@ -224,6 +238,12 @@ exports.handler = async (event) => {
   if (MISSING.length) {
     console.error('[push-send] Missing env vars:', MISSING.join(', '))
     return json(500, { error: 'Server misconfigured', missing: MISSING })
+  }
+
+  // ── Guard: invalid VAPID keys ─────────────────────────────────────────────
+  if (VAPID_ERROR) {
+    console.error('[push-send] Refusing to send — VAPID keys invalid:', VAPID_ERROR)
+    return json(500, { error: 'Invalid VAPID keys', detail: VAPID_ERROR })
   }
 
   // ── Guard: webhook secret ────────────────────────────────────────────────
