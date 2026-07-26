@@ -1,7 +1,10 @@
 package app.netlify.vii_mbuni.twa;
 
 import android.Manifest;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
 import android.content.pm.PackageManager;
+import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
 import android.webkit.GeolocationPermissions;
@@ -40,8 +43,35 @@ public class MainActivity extends BridgeActivity {
         updateManager = new UpdateManager(this);
         updateManager.checkForUpdate();
 
+        createNotificationChannel();
         setupWebViewPermissions();
         requestNotificationPermissionIfNeeded();
+    }
+
+    /**
+     * Registers the "general" channel referenced by AndroidManifest's
+     * default_notification_channel_id meta-data. Without this, Android
+     * auto-creates a channel named "Miscellaneous" the first time a push
+     * arrives, which is what makes notifications look generic/unbranded —
+     * users also can't manage it meaningfully in system settings. Must run
+     * before any notification is shown; channel settings are immutable
+     * once created except by the user.
+     */
+    private void createNotificationChannel() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
+
+        NotificationChannel channel = new NotificationChannel(
+                "general",
+                "General notifications",
+                NotificationManager.IMPORTANCE_HIGH
+        );
+        channel.setDescription("Likes, comments, messages, and other activity on Vii-Mbuni");
+        channel.setLightColor(Color.parseColor("#C8102E"));
+        channel.enableLights(true);
+        channel.enableVibration(true);
+
+        NotificationManager manager = getSystemService(NotificationManager.class);
+        if (manager != null) manager.createNotificationChannel(channel);
     }
 
     /**
