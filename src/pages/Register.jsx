@@ -4,10 +4,18 @@ import { Eye, EyeOff, Loader2, Mail, Phone } from 'lucide-react'
 import ViiMbuniLogo from '@/components/ui/ViiMbuniLogo'
 import sb from '@/lib/supabase'
 import toast from 'react-hot-toast'
+import Captcha, { useCaptcha } from '@/components/ui/Captcha'
 
 const cleanUser = (u) => u.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')
 const isValidPhone = (v) => /^\+?[0-9]{7,15}$/.test(v.replace(/[\s\-()]/g, ''))
 const phoneToEmail = (phone) => `${phone.replace(/\D/g, '')}@phone.vii-mbuni.app`
+
+const MIN_PASSWORD = 8
+const checkPasswords = (pw, confirm) => {
+  if (pw.length < MIN_PASSWORD) return `Password must be at least ${MIN_PASSWORD} characters`
+  if (pw !== confirm) return 'Passwords do not match'
+  return null
+}
 
 const inputClass = [
   'w-full px-4 py-3 rounded-xl text-sm font-medium',
@@ -15,6 +23,46 @@ const inputClass = [
   'focus:outline-none focus:ring-2 focus:ring-brand-400 focus:border-brand-400',
   'transition-all duration-200',
 ].join(' ')
+
+// Password + Confirm password with live match hint (shared by both forms)
+function PasswordFields({ form, set }) {
+  const [showPw, setShowPw] = useState(false)
+  const mismatch = form.confirm.length > 0 && form.password !== form.confirm
+  const match    = form.confirm.length > 0 && form.password === form.confirm
+  return (
+    <>
+      <div>
+        <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">Password</label>
+        <div className="relative">
+          <input
+            type={showPw ? 'text' : 'password'}
+            value={form.password}
+            onChange={set('password')}
+            autoComplete="new-password"
+            placeholder={`At least ${MIN_PASSWORD} characters`}
+            className={inputClass + ' pr-10'}
+          />
+          <button type="button" onClick={() => setShowPw(v => !v)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors">
+            {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
+          </button>
+        </div>
+      </div>
+      <div>
+        <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">Confirm Password</label>
+        <input
+          type={showPw ? 'text' : 'password'}
+          value={form.confirm}
+          onChange={set('confirm')}
+          autoComplete="new-password"
+          className={inputClass + (mismatch ? ' !border-red-400' : match ? ' !border-green-400' : '')}
+        />
+        {mismatch && <p className="text-xs text-red-400 mt-1">Passwords do not match</p>}
+        {match && <p className="text-xs text-green-400 mt-1">Passwords match ✓</p>}
+      </div>
+    </>
+  )
+}
 
 // Step 0 — Choose signup method
 function StepChoose({ onChoose }) {
@@ -50,24 +98,30 @@ function StepChoose({ onChoose }) {
 
 // Step 1a — Email registration form
 function StepEmailForm({ onBack, onNext }) {
-  const [form, setForm]       = useState({ fullName: '', username: '', email: '', password: '' })
-  const [showPw, setShowPw]   = useState(false)
+  const [form, setForm]       = useState({ fullName: '', username: '', email: '', password: '', confirm: '' })
   const [loading, setLoading] = useState(false)
+  const captcha = useCaptcha()
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    const { fullName, username, email, password } = form
-    if (!fullName || !username || !email || !password) return toast.error('Fill in all fields')
-    if (password.length < 6) return toast.error('Password must be at least 6 characters')
+    const { fullName, username, email, password, confirm } = form
+    if (!fullName || !username || !email || !password || !confirm) return toast.error('Fill in all fields')
+    const pwError = checkPasswords(password, confirm)
+    if (pwError) return toast.error(pwError)
+    if (!captcha.ready) return toast.error('Please complete the captcha check')
 
     setLoading(true)
     const { error } = await sb.auth.signUp({
       email,
       password,
-      options: { data: { full_name: fullName, username: cleanUser(username) } },
+      options: {
+        data: { full_name: fullName, username: cleanUser(username) },
+        captchaToken: captcha.token || undefined,
+      },
     })
     setLoading(false)
+    captcha.reset() // tokens are single-use
 
     if (error) return toast.error(error.message)
     toast.success('Code sent to your email!')
@@ -93,21 +147,8 @@ function StepEmailForm({ onBack, onNext }) {
           <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">Email</label>
           <input type="email" value={form.email} onChange={set('email')} className={inputClass} />
         </div>
-        <div>
-          <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">Password</label>
-          <div className="relative">
-            <input
-              type={showPw ? 'text' : 'password'}
-              value={form.password}
-              onChange={set('password')}
-              className={inputClass + ' pr-10'}
-            />
-            <button type="button" onClick={() => setShowPw(v => !v)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors">
-              {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
-            </button>
-          </div>
-        </div>
+        <PasswordFields form={form} set={set} />
+        <Captcha ref={captcha.ref} onToken={captcha.setToken} />
         <button type="submit" disabled={loading} className="btn-primary w-full py-3 mt-1">
           {loading ? <Loader2 size={18} className="animate-spin" /> : 'Continue'}
         </button>
@@ -121,6 +162,7 @@ function StepEmailVerify({ creds, onBack }) {
   const [otp, setOtp]             = useState(['', '', '', '', '', ''])
   const [loading, setLoading]     = useState(false)
   const [resending, setResending] = useState(false)
+  const captcha = useCaptcha()
   const navigate = useNavigate()
 
   const handleChange = (i, val) => {
@@ -167,9 +209,15 @@ function StepEmailVerify({ creds, onBack }) {
   }
 
   const handleResend = async () => {
+    if (!captcha.ready) return toast.error('Please complete the captcha check')
     setResending(true)
-    const { error } = await sb.auth.resend({ type: 'signup', email: creds.email })
+    const { error } = await sb.auth.resend({
+      type: 'signup',
+      email: creds.email,
+      options: { captchaToken: captcha.token || undefined },
+    })
     setResending(false)
+    captcha.reset()
     if (error) toast.error(error.message)
     else toast.success('New code sent!')
   }
@@ -205,7 +253,8 @@ function StepEmailVerify({ creds, onBack }) {
       <button onClick={handleVerify} disabled={loading} className="btn-primary w-full py-3">
         {loading ? <Loader2 size={18} className="animate-spin" /> : 'Verify & finish'}
       </button>
-      <p className="text-center text-gray-500 text-sm mt-4">
+      <div className="mt-4"><Captcha ref={captcha.ref} onToken={captcha.setToken} /></div>
+      <p className="text-center text-gray-500 text-sm mt-2">
         Didn't get it?{' '}
         <button onClick={handleResend} disabled={resending}
           className="text-brand-400 hover:text-brand-300 font-semibold disabled:opacity-50">
@@ -223,18 +272,20 @@ function StepEmailVerify({ creds, onBack }) {
 
 // Step 1b — Phone registration (no OTP)
 function StepPhoneForm({ onBack }) {
-  const [form, setForm]       = useState({ fullName: '', username: '', phone: '', password: '' })
-  const [showPw, setShowPw]   = useState(false)
+  const [form, setForm]       = useState({ fullName: '', username: '', phone: '', password: '', confirm: '' })
   const [loading, setLoading] = useState(false)
+  const captcha = useCaptcha()
   const navigate = useNavigate()
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    const { fullName, username, phone, password } = form
-    if (!fullName || !username || !phone || !password) return toast.error('Fill in all fields')
+    const { fullName, username, phone, password, confirm } = form
+    if (!fullName || !username || !phone || !password || !confirm) return toast.error('Fill in all fields')
     if (!isValidPhone(phone)) return toast.error('Enter a valid phone number, e.g. +254712345678')
-    if (password.length < 6) return toast.error('Password must be at least 6 characters')
+    const pwError = checkPasswords(password, confirm)
+    if (pwError) return toast.error(pwError)
+    if (!captcha.ready) return toast.error('Please complete the captcha check')
 
     setLoading(true)
     // Supabase auth requires an email — we derive one deterministically from the phone number
@@ -245,9 +296,11 @@ function StepPhoneForm({ onBack }) {
       password,
       options: {
         data: { full_name: fullName, username: cleanUser(username), phone_number: phone },
+        captchaToken: captcha.token || undefined,
       },
     })
     setLoading(false)
+    captcha.reset() // tokens are single-use
 
     if (error) return toast.error(error.message)
 
@@ -290,21 +343,8 @@ function StepPhoneForm({ onBack }) {
             className={inputClass}
           />
         </div>
-        <div>
-          <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">Password</label>
-          <div className="relative">
-            <input
-              type={showPw ? 'text' : 'password'}
-              value={form.password}
-              onChange={set('password')}
-              className={inputClass + ' pr-10'}
-            />
-            <button type="button" onClick={() => setShowPw(v => !v)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors">
-              {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
-            </button>
-          </div>
-        </div>
+        <PasswordFields form={form} set={set} />
+        <Captcha ref={captcha.ref} onToken={captcha.setToken} />
         <button type="submit" disabled={loading} className="btn-primary w-full py-3 mt-1">
           {loading ? <Loader2 size={18} className="animate-spin" /> : 'Create Account'}
         </button>
