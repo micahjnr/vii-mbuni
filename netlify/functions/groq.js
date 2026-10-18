@@ -1,70 +1,66 @@
-// netlify/functions/lib/_groq.js
-// Shared Groq chat helper with model fallback.
-// Groq retires models regularly (llama-3.3-70b-versatile was decommissioned
-// 2026-08-16). Override without a code change via the GROQ_MODEL env var
-// (comma-separated list is allowed, tried in order).
-const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions'
+// netlify/functions/groq.js — Groq API proxy with per-IP rate limiting
+const { groqChat } = require('./lib/_groq')
 
-const DEFAULT_MODELS = [
-  'openai/gpt-oss-120b',
-  'openai/gpt-oss-20b',
-  'qwen/qwen3.6-27b',
-]
-
-function modelList() {
-  const env = (process.env.GROQ_MODEL || '').split(',').map(s => s.trim()).filter(Boolean)
-  return [...env, ...DEFAULT_MODELS.filter(m => !env.includes(m))]
+// Lock CORS to the deployed site. Falls back to wildcard only in local dev
+// (when SITE_URL is unset). Set SITE_URL in Netlify env vars → Site settings.
+const ALLOWED_ORIGIN = process.env.SITE_URL || process.env.URL || '*'
+const CORS = {
+  'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
+  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
-// Reasoning models spend part of max_tokens on hidden thinking, so give headroom
-// and keep reasoning short + out of the reply.
-function buildBody(model, messages, maxTokens, temperature) {
-  const body = { model, messages, temperature, max_tokens: maxTokens }
-  if (model.startsWith('openai/gpt-oss')) {
-    body.max_tokens = maxTokens + 400
-    body.reasoning_effort = 'low'
-    body.include_reasoning = false
-  } else if (model.startsWith('qwen/')) {
-    body.max_tokens = maxTokens + 800
+const json = (statusCode, body) => ({
+  statusCode,
+  headers: { 'Content-Type': 'application/json', ...CORS },
+  body: JSON.stringify(body),
+})
+
+// In-memory rate limit store (resets on cold start — good enough for serverless)
+// Key: IP, Value: { count, windowStart }
+const rateLimitStore = new Map()
+const RATE_LIMIT = 30        // max requests
+const RATE_WINDOW = 60_000   // per 60 seconds
+
+function isRateLimited(ip) {
+  const now = Date.now()
+  const entry = rateLimitStore.get(ip)
+  if (!entry || now - entry.windowStart > RATE_WINDOW) {
+    rateLimitStore.set(ip, { count: 1, windowStart: now })
+    return false
   }
-  return body
+  if (entry.count >= RATE_LIMIT) return true
+  entry.count++
+  return false
 }
 
-const clean = t => (t || '').replace(/<think>[\s\S]*?<\/think>/g, '').trim()
+exports.handler = async (event) => {
+  if (event.httpMethod === 'OPTIONS') return { statusCode: 200, headers: CORS, body: '' }
+  if (event.httpMethod !== 'POST') return json(405, { error: 'Method Not Allowed' })
 
-async function groqChat({ messages, maxTokens = 300, temperature = 0.7 }) {
   const apiKey = process.env.GROQ_API_KEY
-  if (!apiKey) throw Object.assign(new Error('GROQ_API_KEY not configured'), { status: 500 })
+  if (!apiKey) return json(500, { error: 'GROQ_API_KEY not configured in Netlify env vars' })
 
-  let lastError
-  for (const model of modelList()) {
-    try {
-      const res = await fetch(GROQ_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify(buildBody(model, messages, maxTokens, temperature)),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        lastError = new Error(`[${model}] ${data.error?.message || 'HTTP ' + res.status}`)
-        lastError.status = res.status
-        // Bad key / rate limit: another model won't help. Model gone / bad params: try next.
-        if (res.status === 401 || res.status === 403 || res.status === 429) throw lastError
-        console.warn('[groq] model failed, trying next:', lastError.message)
-        continue
-      }
-      const text = clean(data.choices?.[0]?.message?.content)
-      if (!text) {
-        lastError = new Error(`[${model}] empty response`)
-        continue
-      }
-      return { text, model }
-    } catch (err) {
-      if (err.status === 401 || err.status === 403 || err.status === 429) throw err
-      lastError = err
-    }
+  // Rate limiting by IP
+  const ip = event.headers['x-forwarded-for']?.split(',')[0]?.trim() || 'unknown'
+  if (isRateLimited(ip)) {
+    return json(429, { error: 'Too many requests. Please wait a moment before trying again.' })
   }
-  throw lastError || new Error('No Groq model available')
-}
 
-module.exports = { groqChat, modelList }
+  let body
+  try { body = JSON.parse(event.body || '{}') }
+  catch { return json(400, { error: 'Invalid JSON' }) }
+
+  const maxTokens = Math.min(body.max_tokens || 300, 1000)
+  const messages = [
+    ...(body.system ? [{ role: 'system', content: body.system }] : []),
+    ...(body.messages || []),
+  ]
+
+  try {
+    const { text } = await groqChat({ messages, maxTokens, temperature: 0.7 })
+    return json(200, { content: [{ type: 'text', text }] })
+  } catch (err) {
+    return json(err.status === 429 ? 429 : 502, { error: err.message })
+  }
+}
