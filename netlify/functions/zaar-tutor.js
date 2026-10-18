@@ -1,9 +1,9 @@
 // netlify/functions/zaar-tutor.js
-// Zaar AI Tutor — powered by Groq (llama-3.3-70b-versatile)
+// Zaar AI Tutor — powered by Groq (model list in lib/_groq.js, override with GROQ_MODEL)
 // Handles all chat turns for the Malam Zaar language tutor feature.
 
-const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const MODEL = 'llama-3.3-70b-versatile';
+import groqLib from './lib/_groq.js';
+const { groqChat } = groqLib;
 const MAX_TOKENS = 600;
 const MAX_HISTORY = 20; // keep last N messages to avoid token bloat
 
@@ -68,42 +68,20 @@ export const handler = async (event) => {
 
   // ── Call Groq ────────────────────────────────────────────────────────────
   try {
-    const response = await fetch(GROQ_API_URL, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        max_tokens: MAX_TOKENS,
+    let reply
+    try {
+      ;({ text: reply } = await groqChat({
+        messages: [{ role: 'system', content: systemContent }, ...trimmedMessages],
+        maxTokens: MAX_TOKENS,
         temperature: 0.4, // lower = less hallucination
-        messages: [
-          { role: 'system', content: systemContent },
-          ...trimmedMessages,
-        ],
-      }),
-    });
-
-    if (!response.ok) {
-      const errText = await response.text();
-      console.error('[zaar-tutor] Groq error:', response.status, errText);
+      }))
+    } catch (e) {
+      console.error('[zaar-tutor] Groq error:', e.message)
       return {
         statusCode: 502,
         headers: CORS_HEADERS,
-        body: JSON.stringify({ error: 'AI service error', detail: response.status }),
-      };
-    }
-
-    const data = await response.json();
-    const reply = data.choices?.[0]?.message?.content?.trim();
-
-    if (!reply) {
-      return {
-        statusCode: 502,
-        headers: CORS_HEADERS,
-        body: JSON.stringify({ error: 'Empty response from AI' }),
-      };
+        body: JSON.stringify({ error: 'AI service error', detail: e.status || 502 }),
+      }
     }
 
     return {
