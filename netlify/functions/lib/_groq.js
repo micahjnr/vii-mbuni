@@ -1,0 +1,66 @@
+// netlify/functions/groq.js — Groq API proxy with per-IP rate limiting
+const { groqChat } = require('./lib/_groq')
+
+// Lock CORS to the deployed site. Falls back to wildcard only in local dev
+// (when SITE_URL is unset). Set SITE_URL in Netlify env vars → Site settings.
+const ALLOWED_ORIGIN = process.env.SITE_URL || process.env.URL || '*'
+const CORS = {
+  'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
+  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+}
+
+const json = (statusCode, body) => ({
+  statusCode,
+  headers: { 'Content-Type': 'application/json', ...CORS },
+  body: JSON.stringify(body),
+})
+
+// In-memory rate limit store (resets on cold start — good enough for serverless)
+// Key: IP, Value: { count, windowStart }
+const rateLimitStore = new Map()
+const RATE_LIMIT = 30        // max requests
+const RATE_WINDOW = 60_000   // per 60 seconds
+
+function isRateLimited(ip) {
+  const now = Date.now()
+  const entry = rateLimitStore.get(ip)
+  if (!entry || now - entry.windowStart > RATE_WINDOW) {
+    rateLimitStore.set(ip, { count: 1, windowStart: now })
+    return false
+  }
+  if (entry.count >= RATE_LIMIT) return true
+  entry.count++
+  return false
+}
+
+exports.handler = async (event) => {
+  if (event.httpMethod === 'OPTIONS') return { statusCode: 200, headers: CORS, body: '' }
+  if (event.httpMethod !== 'POST') return json(405, { error: 'Method Not Allowed' })
+
+  const apiKey = process.env.GROQ_API_KEY
+  if (!apiKey) return json(500, { error: 'GROQ_API_KEY not configured in Netlify env vars' })
+
+  // Rate limiting by IP
+  const ip = event.headers['x-forwarded-for']?.split(',')[0]?.trim() || 'unknown'
+  if (isRateLimited(ip)) {
+    return json(429, { error: 'Too many requests. Please wait a moment before trying again.' })
+  }
+
+  let body
+  try { body = JSON.parse(event.body || '{}') }
+  catch { return json(400, { error: 'Invalid JSON' }) }
+
+  const maxTokens = Math.min(body.max_tokens || 300, 1000)
+  const messages = [
+    ...(body.system ? [{ role: 'system', content: body.system }] : []),
+    ...(body.messages || []),
+  ]
+
+  try {
+    const { text } = await groqChat({ messages, maxTokens, temperature: 0.7 })
+    return json(200, { content: [{ type: 'text', text }] })
+  } catch (err) {
+    return json(err.status === 429 ? 429 : 502, { error: err.message })
+  }
+}
