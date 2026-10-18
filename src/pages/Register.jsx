@@ -4,7 +4,6 @@ import { Eye, EyeOff, Loader2, Mail, Phone } from 'lucide-react'
 import ViiMbuniLogo from '@/components/ui/ViiMbuniLogo'
 import sb from '@/lib/supabase'
 import toast from 'react-hot-toast'
-import Captcha, { useCaptcha } from '@/components/ui/Captcha'
 
 const cleanUser = (u) => u.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')
 const isValidPhone = (v) => /^\+?[0-9]{7,15}$/.test(v.replace(/[\s\-()]/g, ''))
@@ -100,7 +99,6 @@ function StepChoose({ onChoose }) {
 function StepEmailForm({ onBack, onNext }) {
   const [form, setForm]       = useState({ fullName: '', username: '', email: '', password: '', confirm: '' })
   const [loading, setLoading] = useState(false)
-  const captcha = useCaptcha()
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
 
   const handleSubmit = async (e) => {
@@ -109,19 +107,14 @@ function StepEmailForm({ onBack, onNext }) {
     if (!fullName || !username || !email || !password || !confirm) return toast.error('Fill in all fields')
     const pwError = checkPasswords(password, confirm)
     if (pwError) return toast.error(pwError)
-    if (!captcha.ready) return toast.error('Please complete the captcha check')
 
     setLoading(true)
     const { error } = await sb.auth.signUp({
       email,
       password,
-      options: {
-        data: { full_name: fullName, username: cleanUser(username) },
-        captchaToken: captcha.token || undefined,
-      },
+      options: { data: { full_name: fullName, username: cleanUser(username) } },
     })
     setLoading(false)
-    captcha.reset() // tokens are single-use
 
     if (error) return toast.error(error.message)
     toast.success('Code sent to your email!')
@@ -148,7 +141,6 @@ function StepEmailForm({ onBack, onNext }) {
           <input type="email" value={form.email} onChange={set('email')} className={inputClass} />
         </div>
         <PasswordFields form={form} set={set} />
-        <Captcha ref={captcha.ref} onToken={captcha.setToken} />
         <button type="submit" disabled={loading} className="btn-primary w-full py-3 mt-1">
           {loading ? <Loader2 size={18} className="animate-spin" /> : 'Continue'}
         </button>
@@ -162,7 +154,6 @@ function StepEmailVerify({ creds, onBack }) {
   const [otp, setOtp]             = useState(['', '', '', '', '', ''])
   const [loading, setLoading]     = useState(false)
   const [resending, setResending] = useState(false)
-  const captcha = useCaptcha()
   const navigate = useNavigate()
 
   const handleChange = (i, val) => {
@@ -209,15 +200,9 @@ function StepEmailVerify({ creds, onBack }) {
   }
 
   const handleResend = async () => {
-    if (!captcha.ready) return toast.error('Please complete the captcha check')
     setResending(true)
-    const { error } = await sb.auth.resend({
-      type: 'signup',
-      email: creds.email,
-      options: { captchaToken: captcha.token || undefined },
-    })
+    const { error } = await sb.auth.resend({ type: 'signup', email: creds.email })
     setResending(false)
-    captcha.reset()
     if (error) toast.error(error.message)
     else toast.success('New code sent!')
   }
@@ -253,8 +238,7 @@ function StepEmailVerify({ creds, onBack }) {
       <button onClick={handleVerify} disabled={loading} className="btn-primary w-full py-3">
         {loading ? <Loader2 size={18} className="animate-spin" /> : 'Verify & finish'}
       </button>
-      <div className="mt-4"><Captcha ref={captcha.ref} onToken={captcha.setToken} /></div>
-      <p className="text-center text-gray-500 text-sm mt-2">
+      <p className="text-center text-gray-500 text-sm mt-4">
         Didn't get it?{' '}
         <button onClick={handleResend} disabled={resending}
           className="text-brand-400 hover:text-brand-300 font-semibold disabled:opacity-50">
@@ -274,7 +258,6 @@ function StepEmailVerify({ creds, onBack }) {
 function StepPhoneForm({ onBack }) {
   const [form, setForm]       = useState({ fullName: '', username: '', phone: '', password: '', confirm: '' })
   const [loading, setLoading] = useState(false)
-  const captcha = useCaptcha()
   const navigate = useNavigate()
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
 
@@ -285,7 +268,6 @@ function StepPhoneForm({ onBack }) {
     if (!isValidPhone(phone)) return toast.error('Enter a valid phone number, e.g. +254712345678')
     const pwError = checkPasswords(password, confirm)
     if (pwError) return toast.error(pwError)
-    if (!captcha.ready) return toast.error('Please complete the captcha check')
 
     setLoading(true)
     // Supabase auth requires an email — we derive one deterministically from the phone number
@@ -296,11 +278,9 @@ function StepPhoneForm({ onBack }) {
       password,
       options: {
         data: { full_name: fullName, username: cleanUser(username), phone_number: phone },
-        captchaToken: captcha.token || undefined,
       },
     })
     setLoading(false)
-    captcha.reset() // tokens are single-use
 
     if (error) return toast.error(error.message)
 
@@ -344,7 +324,6 @@ function StepPhoneForm({ onBack }) {
           />
         </div>
         <PasswordFields form={form} set={set} />
-        <Captcha ref={captcha.ref} onToken={captcha.setToken} />
         <button type="submit" disabled={loading} className="btn-primary w-full py-3 mt-1">
           {loading ? <Loader2 size={18} className="animate-spin" /> : 'Create Account'}
         </button>
