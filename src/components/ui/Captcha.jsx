@@ -32,13 +32,27 @@ function loadTurnstile() {
  *   captcha.reset()   // tokens are single-use — always reset after an attempt
  */
 export function useCaptcha() {
-  const [token, setToken] = useState(null)
+  const [token, setTokenState] = useState(null)
+  const tokenRef = useRef(null)
   const ref = useRef(null)
+  const setToken = useCallback((t) => { tokenRef.current = t || null; setTokenState(t || null) }, [])
   const reset = useCallback(() => {
-    setToken(null)
+    tokenRef.current = null
+    setTokenState(null)
     ref.current?.reset()
   }, [])
-  return { token, setToken, ref, reset, ready: !captchaEnabled || !!token }
+  // After reset() a new token arrives within ~1s (invisible challenge). Handlers that need
+  // a second call (resend, legacy fallback) can await it instead of making the user re-click.
+  const waitForToken = useCallback(async (ms = 8000) => {
+    if (!captchaEnabled) return undefined
+    const end = Date.now() + ms
+    while (Date.now() < end) {
+      if (tokenRef.current) return tokenRef.current
+      await new Promise((r) => setTimeout(r, 150))
+    }
+    return undefined
+  }, [])
+  return { token, setToken, ref, reset, waitForToken, ready: !captchaEnabled || !!token }
 }
 
 const Captcha = forwardRef(function Captcha({ onToken, theme = 'dark' }, ref) {
