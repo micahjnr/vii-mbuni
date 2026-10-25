@@ -13,7 +13,7 @@ export function useCooldown(seconds = 60) {
   return [left, () => setLeft(seconds)]
 }
 
-/** 6-box code input. Supports paste and SMS autofill (iOS/Android put all 6 digits in the first box). */
+/** 6-box code input. supports paste and SMS autofill (iOS/Android put all 6 digits in the first box). */
 export default function OtpInput({ value, onChange, disabled }) {
   const refs = useRef([])
   const focus = (i) => refs.current[i]?.focus()
